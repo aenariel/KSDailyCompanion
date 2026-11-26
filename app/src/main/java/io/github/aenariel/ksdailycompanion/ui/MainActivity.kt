@@ -1,0 +1,115 @@
+package io.github.aenariel.ksdailycompanion.ui
+
+import android.content.Context
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Modifier
+import io.github.aenariel.ksdailycompanion.data.Log
+import io.github.aenariel.ksdailycompanion.data.Store
+import io.github.aenariel.ksdailycompanion.model.CompanionState
+import io.github.aenariel.ksdailycompanion.notify.Notifier
+import io.github.aenariel.ksdailycompanion.notify.Scheduler
+
+/** Holds the state for the UI; every edit is saved and re-plans the alarm. */
+class AppModel(private val ctx: Context) {
+    var state by mutableStateOf(Store.load(ctx))
+        private set
+    var now by mutableLongStateOf(System.currentTimeMillis())
+        private set
+    var message by mutableStateOf<String?>(null)
+    var notificationsAllowed by mutableStateOf(Notifier.allowed(ctx))
+
+    fun update(why: String, f: (CompanionState) -> CompanionState) {
+        val next = f(state)
+        if (next == state) return
+        state = next
+        Log.i("Edit: $why")
+        Store.save(ctx, next)
+        Scheduler.replan(ctx, why)
+    }
+
+    fun reload() {
+        state = Store.load(ctx)
+        now = System.currentTimeMillis()
+        notificationsAllowed = Notifier.allowed(ctx)
+    }
+
+    fun refreshEvents(quiet: Boolean) {
+        val snapshot = state
+        Thread {
+            val (fresh, msg) = Store.fetchEvents(snapshot)
+            Handler(Looper.getMainLooper()).post {
+                if (fresh != null) update("events update") { it.copy(shared = fresh.shared, sharedVersion = fresh.sharedVersion) }
+                if (!quiet || fresh != null) message = msg
+            }
+        }.start()
+    }
+
+    fun toast(msg: String) { message = msg }
+}
+
+class MainActivity : ComponentActivity() {
+    private lateinit var model: AppModel
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        Log.init(this)
+        Log.i("App opened")
+        Notifier.channels(this)
+        enableEdgeToEdge()
+        model = AppModel(applicationContext)
+        Scheduler.replan(applicationContext, "app open")
+        model.refreshEvents(quiet = true)
+        setContent {
+            MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
+                App(model)
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::model.isInitialized) model.reload()
+    }
+}
+
+private enum class Tab(val icon: String, val label: String) {
+    AGENDA("📅", "Agenda"), CHARACTERS("🧑", "Characters"), EVENTS("🏯", "Events"), SETTINGS("⚙️", "Settings")
+}
+
+@Composable
+private fun App(model: AppModel) {
+    var tab by rememberSaveable { mutableStateOf(Tab.AGENDA) }
+    val snack = remember { SnackbarHostState() }
+    LaunchedEffect(model.message) {
+        model.message?.let { snack.showSnackbar(it); model.message = null }
+    }
+    Scaffold(
+        snackbarHost = { SnackbarHost(snack) },
+        bottomBar = {
+            NavigationBar {
+                for (t in Tab.entries) NavigationBarItem(
+                    selected = tab == t, onClick = { tab = t },
+                    icon = { Text(t.icon) }, label = { Text(t.label) },
+                )
+            }
+        },
+    ) { pad ->
+        val m = Modifier.padding(pad)
+        when (tab) {
+            Tab.AGENDA -> AgendaScreen(model, m, onSetup = { tab = Tab.CHARACTERS })
+            Tab.CHARACTERS -> CharactersScreen(model, m)
+            Tab.EVENTS -> EventsScreen(model, m)
+            Tab.SETTINGS -> SettingsScreen(model, m)
+        }
+    }
+}

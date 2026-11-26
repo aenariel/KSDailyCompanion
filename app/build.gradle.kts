@@ -1,0 +1,59 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
+}
+
+// Release signing comes from the CI secrets (see README). Without them the release build is signed with the debug key.
+val keystorePath: String? = System.getenv("KS_KEYSTORE")?.takeIf { it.isNotBlank() && file(it).exists() }
+
+android {
+    namespace = "io.github.aenariel.ksdailycompanion"
+    compileSdk = 35
+
+    defaultConfig {
+        applicationId = "io.github.aenariel.ksdailycompanion"
+        minSdk = 26
+        targetSdk = 35
+        versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
+        versionName = System.getenv("VERSION_NAME") ?: "0.1.0"
+    }
+
+    signingConfigs {
+        if (keystorePath != null) create("release") {
+            storeFile = file(keystorePath)
+            storePassword = System.getenv("KS_STORE_PASSWORD")
+            keyAlias = System.getenv("KS_KEY_ALIAS")
+            keyPassword = System.getenv("KS_KEY_PASSWORD")
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName(if (keystorePath != null) "release" else "debug")
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    buildFeatures { compose = true }
+}
+
+kotlin {
+    compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
+}
+
+dependencies {
+    implementation(platform("androidx.compose:compose-bom:2024.12.01"))
+    implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.material3:material3")
+    testImplementation("junit:junit:4.13.2")
+}
