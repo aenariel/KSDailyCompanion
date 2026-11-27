@@ -132,6 +132,10 @@ data class Settings(
     val soloPromptMin: Int = 12 * 60,
     val eventsUrl: String = DEFAULT_EVENTS_URL,
     val showTrials: Boolean = true,
+    /** Arena alert before the daily reset (00:00 UTC). */
+    val arenaOn: Boolean = true,
+    /** Minutes before the reset. */
+    val arenaLead: Int = 15,
 )
 
 data class CompanionState(

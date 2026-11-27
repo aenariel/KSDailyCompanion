@@ -229,6 +229,8 @@ sealed class Due {
     data class Prompt(override val id: String, override val fireAt: Long, val charId: String, val charName: String,
                       val group: ChoiceGroup, val occKey: String, val options: List<TimedItem>, val usual: String?) : Due()
     data class Digest(override val id: String, override val fireAt: Long, val day: Int) : Due()
+    /** Arena: a few minutes before the daily reset at 00:00 UTC that starts [resetDay]. */
+    data class Arena(override val id: String, override val fireAt: Long, val resetDay: Int, val lead: Int) : Due()
     /** Asks the day before which slot a character will play (Eternity's Reach). */
     data class SoloPrompt(override val id: String, override val fireAt: Long, val charId: String, val charName: String,
                           val event: SoloEvent, val occKey: String, val day: Int, val usual: String?) : Due()
@@ -296,6 +298,14 @@ fun dueBetween(state: CompanionState, afterMs: Long, uptoMs: Long): List<Due> {
                 if (fire <= afterMs || fire > uptoMs) continue
                 out += Due.SoloPrompt("sp|${ch.id}|$key", fire, ch.id, charLabel(state, ch), se, key, n, ch.usual[se.name])
             }
+        }
+    }
+
+    if (s.arenaOn && state.characters.any { it.on }) {
+        for (n in fromDay..toDay) {
+            val fire = n * DAY_MS - s.arenaLead * MIN_MS
+            if (fire <= afterMs || fire > uptoMs) continue
+            out += Due.Arena("a|$n", fire, n, s.arenaLead)
         }
     }
 

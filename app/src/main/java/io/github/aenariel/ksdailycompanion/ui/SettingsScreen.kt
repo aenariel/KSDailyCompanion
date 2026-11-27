@@ -50,7 +50,8 @@ private fun leadKeys(s: CompanionState): List<Pair<String, String>> {
     val out = LinkedHashMap<String, String>()
     val choice = s.choiceGroups.map { it.group }.toSet()
     out[groupKey(BEAR_GROUP)] = "🐻 $BEAR_GROUP"
-    for (g in s.choiceGroups) out["g:${g.group}"] = shortName(g.group)
+    for (g in s.choiceGroups) out["g:${g.group}"] = withEmoji(s.alliances.values.flatMap { it.timed }.firstOrNull { it.group == g.group }?.emoji
+        ?: viewFor(s, s.kingdoms.keys.firstOrNull() ?: "").event(g.ev)?.emoji ?: "", shortName(g.group))
     out[BATTLE_KEY] = withEmoji(BATTLE_EMOJI, BATTLE_TITLE)
     for (se in soloEvents(s)) out[se.key] = withEmoji(s.shared.cycle.firstOrNull { it.id == se.id }?.emoji ?: "", se.name)
     for (a in s.alliances.values) for (t in a.timed) {
@@ -129,6 +130,10 @@ fun SettingsScreen(model: AppModel, modifier: Modifier) {
             SwitchRow("Show Mystic Trials", st.showTrials, "Trial of the day and its troop ratio, in the agenda") { on -> setSettings("trials on=$on") { it.copy(showTrials = on) } }
         }
 
+        SectionCard("Arena", key = "set-arena") {
+            SwitchRow("Remind me before the daily reset", st.arenaOn, "Arena attempts reset at 00:00 UTC") { on -> setSettings("arena on=$on") { it.copy(arenaOn = on) } }
+            if (st.arenaOn) ValueRow("Before the reset", fmtLead(st.arenaLead), timePreview(timeString((24 * 60 - st.arenaLead) % (24 * 60)), model.now, zone)) { dialog = "arena" }
+        }
         SectionCard("Daily summary", key = "set-digest") {
             SwitchRow("Send a summary of the day", st.digestOn) { on -> setSettings("digest on=$on") { it.copy(digestOn = on) } }
             if (st.digestOn) ValueRow("At", timePreview(timeString(st.digestMin), model.now, zone)) { dialog = "digest" }
@@ -228,6 +233,11 @@ fun SettingsScreen(model: AppModel, modifier: Modifier) {
                 }
                 dialog = null
             }
+        }
+        d == "arena" -> TextDialog("Arena: before the reset", fmtLead(st.arenaLead), "e.g. 15m, 30m or 1h (reset at 00:00 UTC).", { dialog = null }) { text ->
+            val v = parseLeads(text)?.singleOrNull()?.takeIf { it in 1..720 }
+            if (v == null) model.toast("Type one time, e.g. 15m") else setSettings("arena lead ${fmtLead(v)}") { it.copy(arenaLead = v) }
+            dialog = null
         }
         d == "paste" -> PasteDialog({ dialog = null }) { importText(it); dialog = null }
         d == "reset" -> ConfirmDialog("Reset event formats?", "Global events are replaced by the published list; kingdom events get their default format. Dates are kept.", "Reset",

@@ -272,4 +272,17 @@ class EngineTest {
         assertEquals(6, r.alliances["My alliance"]!!.timed.first { it.id == "sl-l1" }.rule.from)
         assertEquals(DEFAULT_ETERNITY_SLOTS, soloEvents(st).single().slots)            // nothing published: defaults
     }
+
+    @Test fun arenaAlert() {
+        val st = base.copy(characters = listOf(Character("a", "Pingu", "My alliance")))
+        // default on, 15 minutes before 00:00 UTC
+        val a = dueBetween(st, ms("2026-11-27", "00:00"), ms("2026-11-28", "00:00")).filterIsInstance<Due.Arena>()
+        assertEquals(listOf(ms("2026-11-27", "23:45")), a.map { it.fireAt })
+        assertEquals(dnum("2026-11-28"), a.single().resetDay)
+        val st30 = st.copy(settings = st.settings.copy(arenaLead = 30))
+        assertEquals(listOf(ms("2026-11-27", "23:30")), dueBetween(st30, ms("2026-11-27", "00:00"), ms("2026-11-28", "00:00")).filterIsInstance<Due.Arena>().map { it.fireAt })
+        val off = st.copy(settings = st.settings.copy(arenaOn = false))
+        assertTrue(dueBetween(off, ms("2026-11-27", "00:00"), ms("2026-11-28", "00:00")).none { it is Due.Arena })
+        assertTrue(dueBetween(base, ms("2026-11-27", "00:00"), ms("2026-11-28", "00:00")).none { it is Due.Arena })   // no characters
+    }
 }

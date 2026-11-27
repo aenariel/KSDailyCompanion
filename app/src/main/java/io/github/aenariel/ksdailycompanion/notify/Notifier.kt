@@ -65,6 +65,7 @@ object Notifier {
             is Due.Reminder -> reminder(ctx, d, now, zone, s.characters.firstOrNull { it.id == d.occ.charId }?.color ?: 0)
             is Due.Prompt -> prompt(ctx, d, zone, s, s.characters.firstOrNull { it.id == d.charId }?.color ?: 0)
             is Due.Digest -> digest(ctx, s, d, zone)
+            is Due.Arena -> arena(ctx, d, now, zone)
             is Due.SoloPrompt -> soloPrompt(ctx, d, zone, s.characters.firstOrNull { it.id == d.charId }?.color ?: 0)
         }
     }
@@ -150,6 +151,17 @@ object Notifier {
             "$who: ${o?.label ?: item}" + (at?.let { " · ${dayLabel(dayOf(it))} ${fmtBoth(it, ZoneId.systemDefault())}" } ?: "")
         }
         show(ctx, notifId, builder(ctx, CH_LEGION).setContentTitle("Saved").setContentText(text).setSilent(true).setTimeoutAfter(15_000))
+    }
+
+    private fun arena(ctx: Context, d: Due.Arena, now: Long, zone: ZoneId) {
+        val resetMs = d.resetDay * DAY_MS
+        if (resetMs < now) { Log.i("Skip Arena alert for ${diso(d.resetDay)}: reset already passed"); return }
+        val left = ((resetMs - now + 30_000) / MIN_MS).toInt()
+        val title = "⚔️ Arena resets ${fmtIn(left)}"
+        val text = "Daily reset · ${fmtBoth(resetMs, zone)}"
+        Log.i("Notify Arena: $title — $text (lead ${fmtLead(d.lead)})")
+        show(ctx, d.id.hashCode(), builder(ctx, CH_REMINDERS).setContentTitle(title).setContentText(text)
+            .setWhen(resetMs).setShowWhen(true).setCategory(NotificationCompat.CATEGORY_REMINDER))
     }
 
     private fun digest(ctx: Context, s: CompanionState, d: Due.Digest, zone: ZoneId) {

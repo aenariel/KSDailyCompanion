@@ -117,6 +117,8 @@ object Codec {
             leads = leads,
             digestOn = o.optBoolean("digestOn", d.digestOn),
             digestMin = o.optInt("digestMin", d.digestMin),
+            arenaOn = o.optBoolean("arenaOn", d.arenaOn),
+            arenaLead = o.optInt("arenaLead", d.arenaLead),
             promptMin = o.optInt("promptMin", d.promptMin),
             soloPromptMin = o.optInt("soloPromptMin", d.soloPromptMin),
             showTrials = o.optBoolean("showTrials", d.showTrials),
@@ -128,6 +130,7 @@ object Codec {
         .put("defaultLeads", arr(s.defaultLeads))
         .put("leads", JSONObject().also { o -> s.leads.forEach { (k, v) -> o.put(k, arr(v)) } })
         .put("digestOn", s.digestOn).put("digestMin", s.digestMin).put("promptMin", s.promptMin).put("soloPromptMin", s.soloPromptMin).put("eventsUrl", s.eventsUrl).put("showTrials", s.showTrials)
+        .put("arenaOn", s.arenaOn).put("arenaLead", s.arenaLead)
 
     fun state(o: JSONObject, fallbackShared: Shared): CompanionState {
         val kingdoms = LinkedHashMap<String, Kingdom>()

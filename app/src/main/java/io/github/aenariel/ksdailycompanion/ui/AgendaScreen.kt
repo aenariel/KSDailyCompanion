@@ -121,18 +121,22 @@ private fun GroupLabel(text: String) {
         modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
 }
 
+/** Halfway between the row colour and a highlight colour: marks without shouting. */
+private fun soft(base: Color, tint: Color): Color = androidx.compose.ui.graphics.lerp(base, tint, 0.5f)
+
 /** An event without a time: same layout as the time rows. Last day and one-day events use the accent; KvK the second accent. */
 @Composable
 private fun EventRow(e: DayEvent) {
     val marked = eventMarked(e)
     val hl = kvkHighlight()
-    val bar = when { e.highlight -> hl.bar; marked -> MaterialTheme.colorScheme.primary; else -> Color.Transparent }
-    val bg = when { e.highlight -> hl.container; marked -> MaterialTheme.colorScheme.primaryContainer; else -> MaterialTheme.colorScheme.surfaceContainerHigh }
+    // Marked events: a softened background, no bar (the bar is the characters' colour on scheduled rows)
+    val base = MaterialTheme.colorScheme.surfaceContainerHigh
+    val bg = when { e.highlight -> soft(base, hl.container); marked -> soft(base, MaterialTheme.colorScheme.primaryContainer); else -> base }
     val fg = when { e.highlight -> hl.onContainer; marked -> MaterialTheme.colorScheme.onPrimaryContainer; else -> MaterialTheme.colorScheme.onSurface }
     val note = eventEndNote(e)
     Surface(Modifier.fillMaxWidth().padding(vertical = 2.dp), shape = RoundedCornerShape(8.dp), color = bg) {
         Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(6.dp).fillMaxHeight().background(bar))
+            Box(Modifier.width(6.dp).fillMaxHeight())
             Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.width(96.dp)) {
                     Text(eventStatus(e), style = MaterialTheme.typography.labelLarge, fontWeight = if (marked) FontWeight.Bold else FontWeight.Normal,
@@ -168,7 +172,7 @@ private fun TrialsTable(trials: List<Trial>) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp)) {
             Spacer(Modifier.weight(2f))
             for (h in heads) Text(h, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         }
         for (t in trials) {
             HorizontalDivider(thickness = 0.5.dp, color = line)
@@ -176,7 +180,7 @@ private fun TrialsTable(trials: List<Trial>) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(withEmoji(t.emoji, t.name), Modifier.weight(2f), style = MaterialTheme.typography.bodyMedium)
                 for (i in 0..2) Text(parts.getOrNull(i) ?: "", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
         }
     }
@@ -270,9 +274,12 @@ private fun OccurrenceRow(o: Occurrence, chars: List<Character>, now: Long, zone
     val hl = kvkHighlight()
     Surface(Modifier.fillMaxWidth().padding(vertical = 3.dp).alpha(if (past) 0.5f else 1f).clip(RoundedCornerShape(8.dp))
         .let { if (clickable) it.clickable(onClick = onChoose) else it },
-        shape = RoundedCornerShape(8.dp), color = if (o.highlight) hl.container else MaterialTheme.colorScheme.surfaceContainerHigh) {
+        shape = RoundedCornerShape(8.dp), color = if (o.highlight) soft(MaterialTheme.colorScheme.surfaceContainerHigh, hl.container) else MaterialTheme.colorScheme.surfaceContainerHigh) {
         Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(6.dp).fillMaxHeight().background(if (o.highlight) hl.bar else Color.Transparent))
+            // the characters' colours: one stripe each when a row is shared
+            Column(Modifier.width(6.dp).fillMaxHeight()) {
+                for (c in chars) Box(Modifier.weight(1f).fillMaxWidth().background(if (c.color != 0) Color(c.color) else Color.Transparent))
+            }
             Row(Modifier.padding(start = 12.dp, end = 10.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.width(96.dp)) {
                     if (o.minute != null) {
