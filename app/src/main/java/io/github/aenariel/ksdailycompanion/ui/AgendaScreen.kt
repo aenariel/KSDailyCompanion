@@ -302,12 +302,14 @@ internal fun OccurrenceRow(o: Occurrence, chars: List<Character>, now: Long, zon
         Kind.BATTLE_TBD -> "✏️ Set time"
         else -> "✏️"
     }
+    val shortChip = chip?.replace("Set time", "Set")
     @Composable fun where() { if (o.where.isNotEmpty()) Text(o.where, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
     @Composable fun title(m: Modifier) = Text(withEmoji(o.emoji, o.title), m)
     val stripes = chars.map { if (it.color != 0) Color(it.color) else Color.Transparent }
     // BoxWithConstraints outside the row: a SubcomposeLayout cannot sit under an intrinsic-height Row
     BoxWithConstraints(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
-        val compact = isCompact(maxWidth - 28.dp)
+        // stacked below ~280 dp of text room: time, alliance, title, characters each get a full line
+        val compact = (maxWidth - 28.dp).value / androidx.compose.ui.platform.LocalDensity.current.fontScale < 280f
         Surface(Modifier.fillMaxWidth().alpha(if (past) 0.5f else 1f).clip(RoundedCornerShape(8.dp))
             .let { if (clickable) it.clickable(onClick = onChoose) else it },
             shape = RoundedCornerShape(8.dp), color = if (o.highlight) soft(MaterialTheme.colorScheme.surfaceContainerHigh, hl.container) else MaterialTheme.colorScheme.surfaceContainerHigh) {
@@ -332,12 +334,14 @@ internal fun OccurrenceRow(o: Occurrence, chars: List<Character>, now: Long, zon
                     title(Modifier.padding(top = 4.dp))
                     CharDots(chars, Modifier.padding(top = 2.dp), status)
                     if (chip != null) Box(Modifier.fillMaxWidth().padding(top = 6.dp), contentAlignment = Alignment.CenterEnd) { RowChip(chip) }
-                } else Row(Modifier.padding(start = 12.dp, end = 10.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                } else Row(Modifier.padding(start = 12.dp, end = 10.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.Top) {
+                    // the button sits under the time, so the title keeps the width
                     Column(Modifier.width(96.dp)) {
                         if (o.minute != null) {
                             Text(fmtUtc(o.atMs), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                             Hint(fmtLocal(o.atMs, zone))
                         } else Text(if (o.kind == Kind.BATTLE_TBD) "TBD" else "—", style = MaterialTheme.typography.labelLarge)
+                        if (shortChip != null) Box(Modifier.padding(top = 6.dp)) { RowChip(shortChip) }
                     }
                     Column(Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.Top) {
@@ -346,10 +350,6 @@ internal fun OccurrenceRow(o: Occurrence, chars: List<Character>, now: Long, zon
                             where()
                         }
                         CharDots(chars, Modifier.padding(top = 2.dp), status)
-                    }
-                    if (chip != null) {
-                        Spacer(Modifier.width(6.dp))
-                        RowChip(chip)
                     }
                 }
             }

@@ -137,7 +137,7 @@ private fun App(model: AppModel) {
 internal fun AppNavBar(tab: Tab, onTab: (Tab) -> Unit) {
     val cfg = androidx.compose.ui.platform.LocalConfiguration.current
     val fontScale = androidx.compose.ui.platform.LocalDensity.current.fontScale
-    val roomy = cfg.screenWidthDp / fontScale >= 400f
+    val roomy = cfg.screenWidthDp / fontScale >= 360f
     NavigationBar {
         for (t in Tab.entries) NavigationBarItem(
             selected = tab == t, onClick = { onTab(t) }, alwaysShowLabel = roomy,
