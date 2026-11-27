@@ -137,8 +137,8 @@ private fun App(model: AppModel) {
 internal fun AppNavBar(tab: Tab, onTab: (Tab) -> Unit) {
     val cfg = androidx.compose.ui.platform.LocalConfiguration.current
     val fontScale = androidx.compose.ui.platform.LocalDensity.current.fontScale
-    // labels need about 72 dp each at normal text; without that room the tabs show icons only (the screen title names the tab)
-    val roomy = cfg.screenWidthDp / fontScale >= 360f
+    // "Characters" needs about 78 dp at normal text; without that room the tabs show icons only (the screen title names the tab)
+    val roomy = cfg.screenWidthDp / fontScale >= 390f
     NavigationBar {
         for (t in Tab.entries) NavigationBarItem(
             selected = tab == t, onClick = { onTab(t) },
