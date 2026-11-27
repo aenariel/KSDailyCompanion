@@ -29,7 +29,7 @@ class AppModel(private val ctx: Context) {
     var accent by mutableStateOf(UiPrefs.accent(ctx))
         private set
 
-    fun setAccent(a: Accent) { accent = a; UiPrefs.setAccent(ctx, a); Log.i("Accent: ${a.label}") }
+    fun chooseAccent(a: Accent) { accent = a; UiPrefs.setAccent(ctx, a); Log.i("Accent: ${a.label}") }
 
     fun update(why: String, f: (CompanionState) -> CompanionState) {
         val next = f(state)

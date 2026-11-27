@@ -119,7 +119,7 @@ fun SettingsScreen(model: AppModel, modifier: Modifier) {
             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                 for (a in Accent.entries) {
                     val sel = a == model.accent
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { model.setAccent(a) }.padding(4.dp)) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { model.chooseAccent(a) }.padding(4.dp)) {
                         Box(Modifier.size(28.dp).border(2.dp, if (sel) MaterialTheme.colorScheme.onSurface else androidx.compose.ui.graphics.Color.Transparent, CircleShape)
                             .padding(4.dp).background(androidx.compose.ui.graphics.Color(if (androidx.compose.foundation.isSystemInDarkTheme()) a.dark else a.light), CircleShape))
                         Text(a.label, style = MaterialTheme.typography.labelSmall, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal)
