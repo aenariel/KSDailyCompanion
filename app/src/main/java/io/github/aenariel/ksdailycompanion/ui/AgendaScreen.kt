@@ -185,17 +185,22 @@ internal fun TrialsTable(trials: List<Trial>) {
         Column(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 4.dp)
             .border(androidx.compose.foundation.BorderStroke(0.5.dp, line), RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp))) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp)) {
-                Spacer(Modifier.weight(nameW))
+                if (!compact) Spacer(Modifier.weight(nameW))
                 for (h in heads) Text(h, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 1)
             }
             for (t in trials) {
                 HorizontalDivider(thickness = 0.5.dp, color = line)
                 val parts = t.ratio.split('/').map { it.trim() }
-                Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                @Composable fun RowScope.numbers() { for (i in 0..2) Text(parts.getOrNull(i) ?: "", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 1) }
+                // tight: the room's name on its own line, the numbers under the headings
+                if (compact) Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp)) {
+                    Text(withEmoji(t.emoji, t.name), style = MaterialTheme.typography.bodyMedium)
+                    Row(Modifier.fillMaxWidth().padding(top = 2.dp)) { numbers() }
+                } else Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(withEmoji(t.emoji, t.name), Modifier.weight(nameW), style = MaterialTheme.typography.bodyMedium)
-                    for (i in 0..2) Text(parts.getOrNull(i) ?: "", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 1)
+                    numbers()
                 }
             }
         }

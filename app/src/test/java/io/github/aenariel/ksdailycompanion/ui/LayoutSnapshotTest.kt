@@ -78,7 +78,9 @@ class LayoutSnapshotTest(private val label: String, private val device: DeviceCo
     @Composable
     private fun Screen(content: @Composable () -> Unit) {
         KsTheme(Accent.BLUE) {
-            Column(Modifier.background(MaterialTheme.colorScheme.background).padding(horizontal = 12.dp)) { content() }
+            androidx.compose.material3.Surface(color = MaterialTheme.colorScheme.background) {
+                Column(Modifier.padding(horizontal = 12.dp)) { content() }
+            }
         }
     }
 

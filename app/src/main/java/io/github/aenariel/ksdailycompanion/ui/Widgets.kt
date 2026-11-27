@@ -75,7 +75,7 @@ fun CharDots(chars: List<Character>, modifier: Modifier = Modifier, suffix: Stri
             ColorDot(c.color, 9)
             Text(" " + c.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, softWrap = false)
         }
-        if (suffix != null) Hint(suffix)
+        if (suffix != null) Hint(if (chars.isEmpty()) suffix else "· $suffix")
     }
 }
 
