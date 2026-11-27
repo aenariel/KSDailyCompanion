@@ -29,9 +29,9 @@ with reminder times you choose (e.g. 12 h and 2 h before). Everything stays on t
 
 ## Install
 
-[**Add to Obtainium**](http://apps.obtainium.imranr.dev/redirect.html?r=obtainium://add/https://github.com/aenariel/KSDailyCompanion)
+[**Add to Obtainium**](http://apps.obtainium.imranr.dev/redirect.html?r=obtainium://add/https://github.com/aenariel/KSCompanion)
 (installs from the GitHub releases and keeps the app updated), or download the APK from the latest
-[release](https://github.com/aenariel/KSDailyCompanion/releases/latest).
+[release](https://github.com/aenariel/KSCompanion/releases/latest).
 
 ## Shared data with KSDailyAgenda
 
