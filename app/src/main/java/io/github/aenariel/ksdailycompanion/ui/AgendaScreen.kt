@@ -18,6 +18,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -301,16 +304,21 @@ internal fun OccurrenceRow(o: Occurrence, chars: List<Character>, now: Long, zon
     }
     @Composable fun where() { if (o.where.isNotEmpty()) Text(o.where, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
     @Composable fun title(m: Modifier) = Text(withEmoji(o.emoji, o.title), m)
-    Surface(Modifier.fillMaxWidth().padding(vertical = 3.dp).alpha(if (past) 0.5f else 1f).clip(RoundedCornerShape(8.dp))
-        .let { if (clickable) it.clickable(onClick = onChoose) else it },
-        shape = RoundedCornerShape(8.dp), color = if (o.highlight) soft(MaterialTheme.colorScheme.surfaceContainerHigh, hl.container) else MaterialTheme.colorScheme.surfaceContainerHigh) {
-        Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
-            // the characters' colours: one stripe each when a row is shared
-            Column(Modifier.width(6.dp).fillMaxHeight()) {
-                for (c in chars) Box(Modifier.weight(1f).fillMaxWidth().background(if (c.color != 0) Color(c.color) else Color.Transparent))
-            }
-            BoxWithConstraints(Modifier.weight(1f)) {
-                if (isCompact(maxWidth)) Column(Modifier.padding(start = 12.dp, end = 10.dp, top = 8.dp, bottom = 8.dp)) {
+    val stripes = chars.map { if (it.color != 0) Color(it.color) else Color.Transparent }
+    // BoxWithConstraints outside the row: a SubcomposeLayout cannot sit under an intrinsic-height Row
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+        val compact = isCompact(maxWidth - 28.dp)
+        Surface(Modifier.fillMaxWidth().alpha(if (past) 0.5f else 1f).clip(RoundedCornerShape(8.dp))
+            .let { if (clickable) it.clickable(onClick = onChoose) else it },
+            shape = RoundedCornerShape(8.dp), color = if (o.highlight) soft(MaterialTheme.colorScheme.surfaceContainerHigh, hl.container) else MaterialTheme.colorScheme.surfaceContainerHigh) {
+            // the characters' colours as a bar on the left: one stripe each when a row is shared
+            Box(Modifier.fillMaxWidth().drawBehind {
+                if (stripes.isNotEmpty()) {
+                    val h = size.height / stripes.size
+                    stripes.forEachIndexed { i, c -> drawRect(c, topLeft = Offset(0f, i * h), size = Size(6.dp.toPx(), h)) }
+                }
+            }.padding(start = 6.dp)) {
+                if (compact) Column(Modifier.padding(start = 12.dp, end = 10.dp, top = 8.dp, bottom = 8.dp)) {
                     Row(verticalAlignment = Alignment.Top) {
                         Column(Modifier.weight(1f)) {
                             if (o.minute != null) {

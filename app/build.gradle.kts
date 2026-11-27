@@ -59,6 +59,15 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
 }
 
+// Full causes in the CI log when a test fails (the report artifact may not be readable from everywhere)
+tasks.withType<Test>().configureEach {
+    testLogging {
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showCauses = true
+        showStackTraces = true
+    }
+}
+
 // Paparazzi's layoutlib needs Guava's -jre variant (known issue in Paparazzi 1.3.x)
 dependencies.constraints {
     add("testImplementation", "com.google.guava:guava") {

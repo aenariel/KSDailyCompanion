@@ -65,6 +65,25 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      - name: Publish layout snapshots to the layout-snapshots branch
+        # A branch rewritten on each main/dev build, holding only the latest images (readable with plain git)
+        if: always() && github.event_name == 'push'
+        run: |
+          SRC=app/src/test/snapshots/images
+          N=$(ls "$SRC"/*.png 2>/dev/null | wc -l)
+          if [ "$N" -eq 0 ]; then echo "No snapshots to publish"; exit 0; fi
+          echo "Publishing $N snapshots from ${GITHUB_SHA::7}"
+          D=$(mktemp -d); cp "$SRC"/*.png "$D"/
+          cd "$D"
+          git init -q -b layout-snapshots
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          printf 'Layout snapshots of %s (%s, run %s)\n' "${GITHUB_SHA::7}" "$GITHUB_REF_NAME" "$GITHUB_RUN_NUMBER" > README.md
+          git add -A
+          git commit -q -m "Layout snapshots of ${GITHUB_SHA::7} (run $GITHUB_RUN_NUMBER)"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" layout-snapshots
+          echo "Pushed to layout-snapshots"
+
       - name: Build release APK
         env:
           KS_STORE_PASSWORD: ${{ secrets.KS_STORE_PASSWORD }}
