@@ -5,6 +5,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -47,12 +48,11 @@ fun AgendaScreen(model: AppModel, modifier: Modifier, onGo: (Tab) -> Unit) {
     val shown = s.copy(characters = s.characters.filter { who == ALL || it.id == who })
     val occ = remember(shown, today) { occurrences(shown, today, today + 6) }
     val kingdoms = shown.characters.filter { it.on }.mapNotNull { s.alliances[it.alliance]?.kingdom }.distinct()
-    val colors = s.characters.associate { it.id to it.color }
+    val byId = s.characters.associateBy { it.id }
 
     LazyColumn(modifier.fillMaxSize().padding(horizontal = 12.dp)) {
         item {
-            Text("Next 7 days", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 12.dp))
-            Hint("Game days are UTC days. Times: UTC · your local time (${zone.id}).")
+            ScreenHeader(Tab.AGENDA, "Next 7 days", "Game days are UTC days. Times: UTC · your local time (${zone.id}).")
             if (!model.notificationsAllowed) SectionCard("Notifications are off") {
                 Text("Reminders can't show until notifications are allowed for this app.")
                 TextButton(onClick = {
@@ -71,7 +71,6 @@ fun AgendaScreen(model: AppModel, modifier: Modifier, onGo: (Tab) -> Unit) {
                 }
                 Hint("Or import a KSDailyAgenda backup in Settings.")
             } else if (s.characters.size > 1) {
-                Spacer(Modifier.height(8.dp))
                 Picker("Showing", who, listOf(ALL to "All characters") + s.characters.map { it.id to charLabel(s, it) }) { who = it }
             }
         }
@@ -81,28 +80,28 @@ fun AgendaScreen(model: AppModel, modifier: Modifier, onGo: (Tab) -> Unit) {
                 SectionCard((if (n == today) "Today · " else if (n == today + 1) "Tomorrow · " else "") + dayLabel(n)) {
                     val global = globalEvents(s, n)
                     if (global.isNotEmpty()) {
-                        GroupLabel("Global")
+                        GroupLabel("🌍 Global")
                         for (e in global) EventRow(e)
                     }
                     for (k in kingdoms) {
                         val ev = kingdomEvents(s, k, n)
                         if (ev.isEmpty()) continue
-                        GroupLabel(kingdomTag(k))
+                        GroupLabel("🏰 " + kingdomTag(k))
                         for (e in ev) EventRow(e)
                     }
-                    val trials = trialsOn(s, n)
-                    if (trials.isNotEmpty()) {
-                        GroupLabel("Mystic Trials")
-                        for (t in trials) PlainRow(t.ratio, withEmoji(t.emoji, t.name))
-                    }
-                    if (rows.isNotEmpty() || s.characters.isNotEmpty()) GroupLabel("Scheduled")
+                    if (rows.isNotEmpty() || s.characters.isNotEmpty()) GroupLabel("🕒 Scheduled")
                     if (rows.isEmpty() && s.characters.isNotEmpty()) Hint("Nothing with a time.", Modifier.padding(vertical = 4.dp))
-                    for (o in rows) OccurrenceRow(o, colors[o.charId] ?: 0, now, zone, multi = s.characters.size > 1) {
+                    for ((o, chars) in mergeRows(rows, byId)) OccurrenceRow(o, chars, now, zone) {
                         when {
                             o.key == BATTLE_KEY -> battleFor = o.alliance to o.day
                             o.solo != null -> soloFor = o
                             else -> choosing = o
                         }
+                    }
+                    val trials = trialsOn(s, n)
+                    if (trials.isNotEmpty()) {
+                        GroupLabel("🔮 Mystic Trials")
+                        TrialsTable(trials)
                     }
                 }
             }
@@ -147,13 +146,38 @@ private fun EventRow(e: DayEvent) {
     }
 }
 
-/** Row with a short label on the left (Mystic Trials ratio). */
+/** Same thing for several characters of one alliance in one row; legion and Eternity picks stay per character. */
+private fun mergeRows(rows: List<Occurrence>, byId: Map<String, Character>): List<Pair<Occurrence, List<Character>>> {
+    val out = LinkedHashMap<String, Pair<Occurrence, MutableList<Character>>>()
+    for (o in rows) {
+        val personal = o.choice != null || o.solo != null
+        val k = if (personal) "${o.charId}|${o.key}|${o.minute}|${o.kind}" else "${o.key}|${o.minute}|${o.kind}|${o.title}|${o.where}"
+        val ch = byId[o.charId] ?: continue
+        out.getOrPut(k) { o to ArrayList() }.second += ch
+    }
+    return out.values.toList()
+}
+
+/** Mystic Trials: a small table with thin lines, troop ratios in columns. */
 @Composable
-private fun PlainRow(left: String, text: String) {
-    Surface(Modifier.fillMaxWidth().padding(vertical = 2.dp), shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-        Row(Modifier.padding(start = 18.dp, end = 12.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(left, modifier = Modifier.width(96.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(text, modifier = Modifier.weight(1f))
+private fun TrialsTable(trials: List<Trial>) {
+    val line = MaterialTheme.colorScheme.outlineVariant
+    val heads = listOf("Infantry", "Cavalry", "Archers")
+    Column(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 4.dp)
+        .border(androidx.compose.foundation.BorderStroke(0.5.dp, line), RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp))) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp)) {
+            Spacer(Modifier.weight(2f))
+            for (h in heads) Text(h, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.End)
+        }
+        for (t in trials) {
+            HorizontalDivider(thickness = 0.5.dp, color = line)
+            val parts = t.ratio.split('/').map { it.trim() }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(withEmoji(t.emoji, t.name), Modifier.weight(2f), style = MaterialTheme.typography.bodyMedium)
+                for (i in 0..2) Text(parts.getOrNull(i) ?: "", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.End)
+            }
         }
     }
 }
@@ -208,7 +232,7 @@ private fun BattleDialog(model: AppModel, alliance: String, day: Int, onClose: (
     var picked by remember { mutableStateOf(model.state.battles[alliance]?.get(key).orEmpty().toSet()) }
     AlertDialog(
         onDismissRequest = onClose,
-        title = { DialogTitle(BATTLE_EMOJI, "$BATTLE_TITLE · $alliance") },
+        title = { DialogTitle(BATTLE_EMOJI, "$BATTLE_TITLE ($alliance)") },
         text = {
             Column {
                 Hint("${dayLabel(day)}. Pick the hours of your battles (the slot most voted at sign-up). One reminder per hour.")
@@ -240,7 +264,7 @@ private fun BattleDialog(model: AppModel, alliance: String, day: Int, onClose: (
 }
 
 @Composable
-private fun OccurrenceRow(o: Occurrence, color: Int, now: Long, zone: ZoneId, multi: Boolean, onChoose: () -> Unit) {
+private fun OccurrenceRow(o: Occurrence, chars: List<Character>, now: Long, zone: ZoneId, onChoose: () -> Unit) {
     val past = o.minute != null && o.atMs < now
     val clickable = o.choice != null || o.solo != null || o.key == BATTLE_KEY
     val hl = kvkHighlight()
@@ -248,8 +272,8 @@ private fun OccurrenceRow(o: Occurrence, color: Int, now: Long, zone: ZoneId, mu
         .let { if (clickable) it.clickable(onClick = onChoose) else it },
         shape = RoundedCornerShape(8.dp), color = if (o.highlight) hl.container else MaterialTheme.colorScheme.surfaceContainerHigh) {
         Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(6.dp).fillMaxHeight().background(if (color != 0) Color(color) else Color.Transparent))
-            Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.width(6.dp).fillMaxHeight().background(if (o.highlight) hl.bar else Color.Transparent))
+            Row(Modifier.padding(start = 12.dp, end = 10.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.width(96.dp)) {
                     if (o.minute != null) {
                         Text(fmtUtc(o.atMs), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
@@ -257,19 +281,23 @@ private fun OccurrenceRow(o: Occurrence, color: Int, now: Long, zone: ZoneId, mu
                     } else Text(if (o.kind == Kind.BATTLE_TBD) "TBD" else "—", style = MaterialTheme.typography.labelLarge)
                 }
                 Column(Modifier.weight(1f)) {
-                    Text(withEmoji(o.emoji, o.title))
-                    val sub = buildList {
-                        if (multi) add(o.charName)
-                        when (o.kind) {
-                            Kind.CHOICE_PENDING -> add(if (o.solo != null) "time not set — tap to choose" else "legion not set — tap to choose")
-                            Kind.CHOICE_NONE -> add("not playing — tap to change")
-                            Kind.BATTLE_TBD -> add("time TBD — tap to set")
-                            Kind.TIMED -> if (o.choice != null) add(if (o.choice.explicit) "tap to change" else "usual legion — tap to change")
-                                else if (o.key == BATTLE_KEY) add("tap to change")
-                                else if (o.solo != null) add(if (o.solo.explicit) "tap to change" else "usual time — tap to change")
-                        }
+                    Text(withEmoji(o.emoji, o.title) + if (o.where.isNotEmpty()) " (${o.where})" else "")
+                    val status = when (o.kind) {
+                        Kind.CHOICE_PENDING -> if (o.solo != null) "time not set" else "legion not set"
+                        Kind.CHOICE_NONE -> "not playing"
+                        Kind.BATTLE_TBD -> "time TBD"
+                        Kind.TIMED -> if (o.choice != null && !o.choice.explicit) "usual legion"
+                            else if (o.solo != null && !o.solo.explicit) "usual time" else null
                     }
-                    if (sub.isNotEmpty()) Hint(sub.joinToString(" · "))
+                    CharDots(chars, Modifier.padding(top = 2.dp), status)
+                }
+                if (clickable) {
+                    Spacer(Modifier.width(6.dp))
+                    RowChip(when (o.kind) {
+                        Kind.CHOICE_PENDING -> if (o.solo != null) "✏️ Set time" else "✏️ Choose"
+                        Kind.BATTLE_TBD -> "✏️ Set time"
+                        else -> "✏️"
+                    })
                 }
             }
         }
@@ -292,7 +320,7 @@ private fun LegionDialog(model: AppModel, o: Occurrence, onClose: () -> Unit) {
     val now = model.now
     AlertDialog(
         onDismissRequest = onClose,
-        title = { DialogTitle(o.emoji.let { displayEmoji(it) }, c.group.group) },
+        title = { DialogTitle(o.emoji.let { displayEmoji(it) }, shortName(c.group.group)) },
         text = {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {

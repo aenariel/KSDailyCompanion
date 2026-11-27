@@ -22,9 +22,7 @@ fun KingdomsScreen(model: AppModel, modifier: Modifier) {
     var editing by remember { mutableStateOf<Pair<String?, Kingdom>?>(null) }
     var deleting by remember { mutableStateOf<String?>(null) }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
-        Text("Kingdoms", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 12.dp))
-        Hint("Tap to edit, long-press for more. Each kingdom has the dates of its own rotating events; every alliance in it follows them.")
-        Spacer(Modifier.height(6.dp))
+        ScreenHeader(Tab.KINGDOMS, hint = "Tap to edit, long-press for more. Each kingdom has the dates of its own rotating events; every alliance in it follows them.")
         for ((name, k) in s.kingdoms) {
             val v = kingdomView(s, k)
             val alliances = s.alliances.filterValues { it.kingdom == name }.keys
@@ -36,11 +34,9 @@ fun KingdomsScreen(model: AppModel, modifier: Modifier) {
                 Column(Modifier.weight(1f)) {
                     Text(kingdomTag(name) + if (k.variant == "old") " · Gen 4+" else "", fontWeight = FontWeight.SemiBold)
                     Hint("Alliances: " + alliances.joinToString(", ").ifEmpty { "none" })
+                    CharactersLine(s.characters.filter { s.alliances[it.alliance]?.kingdom == name })
+                    Spacer(Modifier.height(6.dp))
                     for (ev in k.cycle.filter { it.on }) Hint(withEmoji(ev.emoji, ev.name) + " · " + runText(v, ev, today), Modifier.padding(start = 8.dp))
-                    val users = s.characters.filter { s.alliances[it.alliance]?.kingdom == name }
-                    if (users.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
-                        for (u in users) { ColorDot(u.color, 10); Hint(" ${u.name}  ") }
-                    }
                 }
             }
         }

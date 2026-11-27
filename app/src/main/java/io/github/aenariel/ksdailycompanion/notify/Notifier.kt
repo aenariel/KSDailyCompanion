@@ -97,7 +97,7 @@ object Notifier {
             val m = parseTime(o.time)
             shortLabel(o.label) + ": " + (m?.let { fmtBoth(battleMs(s, d, o) ?: (it * MIN_MS), zone) } ?: o.time)
         }
-        val title = withEmoji(d.options.first().emoji, "${d.group.group}: which legion?")
+        val title = withEmoji(d.options.first().emoji, "${shortName(d.group.group)}: which legion?")
         val text = "${d.charName} — registration is open." + (usual?.let { " Usual: $it." } ?: "")
         val b = builder(ctx, CH_LEGION).setContentTitle(title).setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText("$text\n$times" + if (d.options.size > 2) "\nMore legions: open the app." else ""))
@@ -139,7 +139,7 @@ object Notifier {
         val group = occ.substringBeforeLast('@')
         val who = charLabel(s, ch)
         val solo = soloEvents(s).firstOrNull { it.name == group }
-        val text = if (item == NONE) "$who: not playing $group" else if (solo != null) {
+        val text = if (item == NONE) "$who: not playing ${shortName(group)}" else if (solo != null) {
             val day = dnum(occ.substringAfterLast('@'))
             val h = item.toIntOrNull() ?: 0
             "$who: $group" + (day?.let { " · ${dayLabel(it)} ${fmtBoth(it * DAY_MS + h * 60 * MIN_MS, ZoneId.systemDefault())}" } ?: "")

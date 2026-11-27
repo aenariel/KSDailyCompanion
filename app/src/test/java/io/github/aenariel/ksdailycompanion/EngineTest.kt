@@ -196,6 +196,21 @@ class EngineTest {
         val st2 = st0.copy(alliances = mapOf("My alliance" to al.copy(timed = al.timed.map { if (it.id == "vv1") it.copy(time = "19:00 UTC") else it })))
         val vv = occurrences(st2, d("2026-11-17"), d("2026-11-19")).filter { it.key == groupKey(VIKING_GROUP) }
         assertEquals(listOf(d("2026-11-17") to 19 * 60), vv.map { it.day to it.minute })
+        // Agenda rows: short title, alliance label, character name alone
+        assertEquals("Vikings (Day 1)", vv.single().title)
+        assertEquals("Pingu", vv.single().who)
+        assertEquals("My alliance, My kingdom", vv.single().where)
+    }
+
+    @Test fun shortNamesAndLabels() {
+        assertEquals("Swordland", shortName("Swordland Showdown")); assertEquals("Tri-Alliance", shortName("Tri-Alliance Clash"))
+        assertEquals("Vikings", shortName(VIKING_GROUP)); assertEquals("Eternity's Reach", shortName("Eternity's Reach"))
+        assertEquals("Ffs, #1130", allianceLabel("Ffs", "1130"))
+        val st = base.copy(kingdoms = mapOf("1130" to defaultKingdom("old")), alliances = mapOf("Ffs" to defaultAlliance("1130")),
+            characters = listOf(Character("a", "Pingu", "Ffs")))
+        assertEquals("Pingu (Ffs, #1130)", charLabel(st, st.characters[0]))
+        val pending = occurrences(st, d("2026-11-01"), d("2026-11-30")).filter { it.kind == Kind.CHOICE_PENDING && it.choice != null }
+        assertTrue(pending.isNotEmpty() && pending.all { it.title in setOf("Swordland", "Tri-Alliance") && it.where == "Ffs, #1130" })
     }
 
     @Test fun kingdomNamesAndReset() {

@@ -50,12 +50,12 @@ private fun leadKeys(s: CompanionState): List<Pair<String, String>> {
     val out = LinkedHashMap<String, String>()
     val choice = s.choiceGroups.map { it.group }.toSet()
     out[groupKey(BEAR_GROUP)] = "🐻 $BEAR_GROUP"
-    for (g in s.choiceGroups) out["g:${g.group}"] = g.group
+    for (g in s.choiceGroups) out["g:${g.group}"] = shortName(g.group)
     out[BATTLE_KEY] = withEmoji(BATTLE_EMOJI, BATTLE_TITLE)
     for (se in soloEvents(s)) out[se.key] = withEmoji(s.shared.cycle.firstOrNull { it.id == se.id }?.emoji ?: "", se.name)
     for (a in s.alliances.values) for (t in a.timed) {
         if (t.group in choice) continue
-        if (t.group.isNotBlank()) out.putIfAbsent(groupKey(t.group), withEmoji(t.emoji, t.group))
+        if (t.group.isNotBlank()) out.putIfAbsent(groupKey(t.group), withEmoji(t.emoji, shortName(t.group)))
         else out.putIfAbsent("t:${t.id}", withEmoji(t.emoji, t.label))
     }
     for (k in s.kingdoms.keys.ifEmpty { setOf("") }) for (ev in viewFor(s, k).cycle) if (ev.startTime.isNotBlank()) out.putIfAbsent("c:${ev.id}", withEmoji(ev.emoji, ev.name))
@@ -95,7 +95,7 @@ fun SettingsScreen(model: AppModel, modifier: Modifier) {
         model.update(why) { it.copy(settings = f(it.settings)) }
 
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
-        Text("Settings", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 12.dp, bottom = 6.dp))
+        ScreenHeader(Tab.SETTINGS)
 
         SectionCard("Reminders", key = "set-reminders") {
             ValueRow("Default: before each event", fmtLeads(st.defaultLeads)) { dialog = "leads" }

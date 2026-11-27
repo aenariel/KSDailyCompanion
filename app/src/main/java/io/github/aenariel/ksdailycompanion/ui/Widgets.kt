@@ -29,6 +29,46 @@ fun Hint(text: String, modifier: Modifier = Modifier) {
     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = modifier)
 }
 
+/** Title of a tab, with its icon, an optional line of instructions and room before the cards. */
+@Composable
+fun ScreenHeader(tab: Tab, title: String = tab.label, hint: String? = null) {
+    Text("${tab.icon} $title", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 16.dp))
+    if (hint != null) Hint(hint, Modifier.padding(top = 6.dp))
+    Spacer(Modifier.height(14.dp))
+}
+
+/** "Characters: ● Pingu ● Mara" on alliance and kingdom cards. */
+@Composable
+fun CharactersLine(users: List<Character>) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+        Hint("Characters: " + if (users.isEmpty()) "none" else "")
+        CharDots(users)
+    }
+}
+
+/** Small outlined button inside a row, e.g. "✏️ Set time". */
+@Composable
+fun RowChip(text: String) {
+    Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(50), color = androidx.compose.ui.graphics.Color.Transparent,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary)) {
+        Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+    }
+}
+
+/** "● Pingu  ● Mara": character names with their colour. */
+@Composable
+fun CharDots(chars: List<Character>, modifier: Modifier = Modifier, suffix: String? = null) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        for ((i, c) in chars.withIndex()) {
+            if (i > 0) Spacer(Modifier.width(10.dp))
+            ColorDot(c.color, 9)
+            Text(" " + c.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (suffix != null) Hint((if (chars.isEmpty()) "" else " · ") + suffix)
+    }
+}
+
 /** A button showing the current choice; tapping opens a menu. */
 @Composable
 fun <T> Picker(label: String, current: T, options: List<Pair<T, String>>, modifier: Modifier = Modifier, onPick: (T) -> Unit) {

@@ -21,9 +21,7 @@ fun AlliancesScreen(model: AppModel, modifier: Modifier) {
     var deleting by remember { mutableStateOf<String?>(null) }
     val choiceNames = s.choiceGroups.map { it.group }.toSet()
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
-        Text("Alliances", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 12.dp))
-        Hint("Tap to edit, long-press for more. Each alliance has its Bear Trap and legion times (UTC); event dates come from its kingdom.")
-        Spacer(Modifier.height(6.dp))
+        ScreenHeader(Tab.ALLIANCES, hint = "Tap to edit, long-press for more. Each alliance has its Bear Trap and legion times (UTC); event dates come from its kingdom.")
         for ((name, a) in s.alliances) {
             val users = s.characters.filter { it.alliance == name }
             MenuCard(onClick = { editing = name to a }, menu = listOf(
@@ -32,16 +30,16 @@ fun AlliancesScreen(model: AppModel, modifier: Modifier) {
                 "Delete" to { deleting = name },
             )) {
                 Column(Modifier.weight(1f)) {
-                    Text("$name · ${kingdomTag(a.kingdom)}", fontWeight = FontWeight.SemiBold)
+                    Text(allianceLabel(name, a.kingdom), fontWeight = FontWeight.SemiBold)
+                    CharactersLine(users)
+                    Spacer(Modifier.height(6.dp))
+                    val ind = Modifier.padding(start = 8.dp)
                     val traps = a.timed.filter { it.on && it.group == BEAR_GROUP }
-                    if (traps.isNotEmpty()) Hint("🐻 " + traps.joinToString(" · ") { Notifier.shortLabel(it.label) + " " + hhmm(it.time) })
+                    if (traps.isNotEmpty()) Hint("🐻 " + traps.joinToString(" · ") { Notifier.shortLabel(it.label) + " " + hhmm(it.time) }, ind)
                     val vv = a.timed.filter { it.on && it.group == VIKING_GROUP && it.time.isNotBlank() }
-                    if (vv.isNotEmpty()) Hint("🪓 " + vv.joinToString(" · ") { it.label + " " + hhmm(it.time) })
+                    if (vv.isNotEmpty()) Hint("🪓 " + shortName(VIKING_GROUP) + ": " + vv.joinToString(" · ") { it.label + " " + hhmm(it.time) }, ind)
                     for ((g, items) in a.timed.filter { it.on && it.group in choiceNames }.groupBy { it.group })
-                        Hint(withEmoji(items[0].emoji, items.joinToString(" · ") { legionName(it) + " " + hhmm(it.time) }))
-                    if (users.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
-                        for (u in users) { ColorDot(u.color, 10); Hint(" ${u.name}  ") }
-                    }
+                        Hint(withEmoji(items[0].emoji, items.joinToString(" · ") { legionName(it) + " " + hhmm(it.time) }), ind)
                 }
             }
         }
@@ -122,7 +120,7 @@ private fun AllianceDialog(model: AppModel, original: String?, start: Alliance, 
                     }
                 }
 
-                SectionCard("🪓 $VIKING_GROUP") {
+                SectionCard("🪓 ${shortName(VIKING_GROUP)}") {
                     val vv = a.timed.filter { it.group == VIKING_GROUP }
                     if (vv.isEmpty()) TextButton(onClick = { a = a.copy(timed = a.timed + vikingItems()) }) { Text("Add Viking Vengeance times") }
                     for (t in vv) ValueRow(t.label + if (t.on) "" else " (off)", if (t.time.isBlank()) "not set" else hhmm(t.time) + " UTC",
@@ -196,7 +194,7 @@ private fun TimeDialog(model: AppModel, start: TimedItem, allowEmpty: Boolean = 
     val time = if (allowEmpty && text.isBlank()) "" else normTime(text)
     AlertDialog(
         onDismissRequest = onClose,
-        title = { DialogTitle(displayEmoji(start.emoji), if (start.group == VIKING_GROUP) "Viking Vengeance · ${start.label}" else Notifier.shortLabel(start.label)) },
+        title = { DialogTitle(displayEmoji(start.emoji), if (start.group == VIKING_GROUP) "${shortName(VIKING_GROUP)} · ${start.label}" else Notifier.shortLabel(start.label)) },
         text = {
             Column {
                 OutlinedTextField(text, { text = it }, label = { Text("Time (UTC)") }, singleLine = true, isError = time == null, modifier = Modifier.fillMaxWidth())

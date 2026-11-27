@@ -108,6 +108,10 @@ data class Occurrence(
     val solo: SoloInfo? = null,
     /** KvK, Castle Battle… */
     val highlight: Boolean = false,
+    /** Character name alone, e.g. "Pingu". */
+    val who: String = "",
+    /** Alliance and kingdom, e.g. "Ffs, #1130". */
+    val where: String = "",
 ) {
     val atMs: Long get() = day * DAY_MS + (minute ?: 0) * MIN_MS
 }
@@ -117,11 +121,19 @@ fun occKey(group: String, startDay: Int): String = "$group@${diso(startDay)}"
 /** "1130" -> "#1130"; names that are not a number stay as they are. */
 fun kingdomTag(name: String): String = if (name.isNotEmpty() && name.all { it.isDigit() }) "#$name" else name
 
+/** "Ffs, #1130": the same format everywhere (characters, alliances, agenda rows). */
+fun allianceLabel(tag: String, kingdom: String?): String = if (kingdom.isNullOrBlank()) tag else "$tag, ${kingdomTag(kingdom)}"
+
 /** "Pingu (Ffs, #1130)": tells apart characters with the same name. */
-fun charLabel(state: CompanionState, ch: Character): String {
-    val al = state.alliances[ch.alliance] ?: return "${ch.name} (${ch.alliance})"
-    return "${ch.name} (${ch.alliance}, ${kingdomTag(al.kingdom)})"
-}
+fun charLabel(state: CompanionState, ch: Character): String =
+    "${ch.name} (${allianceLabel(ch.alliance, state.alliances[ch.alliance]?.kingdom)})"
+
+/** Short names, as in the agenda's message: "Swordland Showdown" -> "Swordland". */
+val SHORT_NAMES = mapOf("Swordland Showdown" to "Swordland", "Tri-Alliance Clash" to "Tri-Alliance", "Viking Vengeance" to "Vikings")
+fun shortName(name: String): String = SHORT_NAMES[name] ?: name
+
+/** Title of an alliance time: "Trap 1", "Swordland (Legion 1)", "Vikings (Day 1)". */
+fun itemTitle(t: TimedItem): String = if (t.group == VIKING_GROUP) "${shortName(t.group)} (${t.label})" else t.label
 
 /** Cycle offset so that an event of period [every] starts on [date]. */
 fun startFromDate(v: View, date: Int, every: Int): Int = mod(date - v.anchorN, max(1, every))
@@ -143,12 +155,16 @@ fun occurrences(state: CompanionState, fromDay: Int, toDay: Int): List<Occurrenc
         val al = state.alliances[ch.alliance] ?: continue
         val v = viewFor(state, al.kingdom)
         val label = charLabel(state, ch)
+        val where = allianceLabel(ch.alliance, al.kingdom)
+        fun occ(key: String, emoji: String, title: String, n: Int, minute: Int?, kind: Kind = Kind.TIMED, choice: ChoiceInfo? = null,
+                solo: SoloInfo? = null, highlight: Boolean = false) =
+            Occurrence(ch.id, label, key, emoji, title, n, minute, kind, choice, ch.alliance, solo, highlight, ch.name, where)
         for (n in fromDay..toDay) {
             for (it in al.timed) {
                 if (!it.on || it.group in choiceNames || "t:${it.id}" in ch.off) continue
                 if (!ruleHits(v, it.rule, n)) continue
                 val m = parseTime(it.time) ?: continue
-                out += Occurrence(ch.id, label, if (it.group.isNotBlank()) groupKey(it.group) else "t:${it.id}", it.emoji, it.label, n, m)
+                out += occ(if (it.group.isNotBlank()) groupKey(it.group) else "t:${it.id}", it.emoji, itemTitle(it), n, m)
             }
             for (cg in state.choiceGroups) {
                 if ("g:${cg.group}" in ch.off) continue
@@ -162,12 +178,12 @@ fun occurrences(state: CompanionState, fromDay: Int, toDay: Int): List<Occurrenc
                 val info = ChoiceInfo(cg, key, items, sel, explicit != null)
                 val emoji = items.first().emoji
                 when {
-                    sel == null -> out += Occurrence(ch.id, label, "g:${cg.group}", emoji, cg.group, n, null, Kind.CHOICE_PENDING, info)
-                    sel == NONE -> out += Occurrence(ch.id, label, "g:${cg.group}", emoji, cg.group, n, null, Kind.CHOICE_NONE, info)
+                    sel == null -> out += occ("g:${cg.group}", emoji, shortName(cg.group), n, null, Kind.CHOICE_PENDING, info)
+                    sel == NONE -> out += occ("g:${cg.group}", emoji, shortName(cg.group), n, null, Kind.CHOICE_NONE, info)
                     else -> {
                         val it = hits.firstOrNull { x -> x.id == sel } ?: continue
                         val m = parseTime(it.time) ?: continue
-                        out += Occurrence(ch.id, label, "g:${cg.group}", it.emoji, it.label, n, m, Kind.TIMED, info)
+                        out += occ("g:${cg.group}", it.emoji, itemTitle(it), n, m, Kind.TIMED, info)
                     }
                 }
             }
@@ -176,7 +192,7 @@ fun occurrences(state: CompanionState, fromDay: Int, toDay: Int): List<Occurrenc
                 val h = cycleHit(v, ev, n) ?: continue
                 if (h.start != n) continue
                 val m = parseTime(ev.startTime) ?: continue
-                out += Occurrence(ch.id, label, "c:${ev.id}", ev.emoji, ev.name, n, m, highlight = ev.highlight)
+                out += occ("c:${ev.id}", ev.emoji, shortName(ev.name), n, m, highlight = ev.highlight)
             }
             for (se in soloEvents(state)) {
                 if (se.key in ch.off) continue
@@ -189,15 +205,15 @@ fun occurrences(state: CompanionState, fromDay: Int, toDay: Int): List<Occurrenc
                 val info = SoloInfo(se, key, sel, explicit != null)
                 val hour = sel?.toIntOrNull()
                 out += when {
-                    sel == null -> Occurrence(ch.id, label, se.key, ev.emoji, se.name, n, null, Kind.CHOICE_PENDING, solo = info)
-                    sel == NONE || hour == null -> Occurrence(ch.id, label, se.key, ev.emoji, se.name, n, null, Kind.CHOICE_NONE, solo = info)
-                    else -> Occurrence(ch.id, label, se.key, ev.emoji, se.name, n, hour * 60, solo = info)
+                    sel == null -> occ(se.key, ev.emoji, se.name, n, null, Kind.CHOICE_PENDING, solo = info)
+                    sel == NONE || hour == null -> occ(se.key, ev.emoji, se.name, n, null, Kind.CHOICE_NONE, solo = info)
+                    else -> occ(se.key, ev.emoji, se.name, n, hour * 60, solo = info)
                 }
             }
             if (isBattleDay(n) && BATTLE_KEY !in ch.off) {
                 val hours = state.battles[ch.alliance]?.get(diso(n)).orEmpty()
-                if (hours.isEmpty()) out += Occurrence(ch.id, label, BATTLE_KEY, BATTLE_EMOJI, BATTLE_TITLE, n, null, Kind.BATTLE_TBD, alliance = ch.alliance)
-                for (hr in hours.sorted()) out += Occurrence(ch.id, label, BATTLE_KEY, BATTLE_EMOJI, BATTLE_TITLE, n, hr * 60, alliance = ch.alliance)
+                if (hours.isEmpty()) out += occ(BATTLE_KEY, BATTLE_EMOJI, BATTLE_TITLE, n, null, Kind.BATTLE_TBD)
+                for (hr in hours.sorted()) out += occ(BATTLE_KEY, BATTLE_EMOJI, BATTLE_TITLE, n, hr * 60)
             }
         }
     }
