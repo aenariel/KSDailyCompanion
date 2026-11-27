@@ -3,7 +3,7 @@ name: Build APK
 on:
   push:
     branches: [main, dev]
-    tags: ["v*"]
+  # Releases are published on GitHub (which creates the tag): one build per release
   release:
     types: [published]
   workflow_dispatch:
@@ -87,5 +87,5 @@ jobs:
             gh release upload "$GITHUB_REF_NAME" out/*.apk --clobber
           else
             echo "Creating release $GITHUB_REF_NAME"
-            gh release create "$GITHUB_REF_NAME" out/*.apk --title "KS Companion $VERSION_NAME" --generate-notes
+            gh release create "$GITHUB_REF_NAME" out/*.apk --title "KSCompanion $VERSION_NAME" --generate-notes
           fi

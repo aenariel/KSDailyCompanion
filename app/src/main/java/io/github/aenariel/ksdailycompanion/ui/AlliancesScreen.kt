@@ -13,29 +13,32 @@ import androidx.compose.ui.unit.dp
 import io.github.aenariel.ksdailycompanion.model.*
 import io.github.aenariel.ksdailycompanion.notify.Notifier
 
-/** Alliances hold the times (legions, Bear Traps…); the event dates come from their kingdom. */
+/** Alliances hold the times (Bear Traps, legions…); the event dates come from their kingdom. */
 @Composable
 fun AlliancesScreen(model: AppModel, modifier: Modifier) {
     val s = model.state
     var editing by remember { mutableStateOf<Pair<String?, Alliance>?>(null) }   // original name (null = new), data
+    var deleting by remember { mutableStateOf<String?>(null) }
     val choiceNames = s.choiceGroups.map { it.group }.toSet()
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
         Text("Alliances", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 12.dp))
-        Hint("Each alliance has its legion and Bear Trap times, in UTC. Event dates come from its kingdom (Kingdoms tab).")
+        Hint("Tap to edit, long-press for more. Each alliance has its Bear Trap and legion times (UTC); event dates come from its kingdom.")
+        Spacer(Modifier.height(6.dp))
         for ((name, a) in s.alliances) {
             val users = s.characters.filter { it.alliance == name }
-            Card(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { editing = name to a }) {
-                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("$name · ${kingdomTag(a.kingdom)}", fontWeight = FontWeight.SemiBold)
-                        val legions = a.timed.filter { it.on && it.group in choiceNames }.groupBy { it.group }
-                            .map { (g, items) -> g.substringBefore(' ') + " " + items.joinToString(" / ") { (normTime(it.time) ?: it.time).removeSuffix(" UTC") } }
-                        val other = a.timed.filter { it.on && it.group !in choiceNames }.joinToString(", ") { "${it.label} ${(normTime(it.time) ?: it.time).removeSuffix(" UTC")}" }
-                        if (legions.isNotEmpty()) Hint(legions.joinToString(" · ") + " UTC")
-                        if (other.isNotEmpty()) Hint("$other UTC")
-                        if (users.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
-                            for (u in users) { ColorDot(u.color, 10); Hint(" ${u.name}  ") }
-                        }
+            MenuCard(onClick = { editing = name to a }, menu = listOf(
+                "Edit" to { editing = name to a },
+                "Duplicate" to { editing = null to a },
+                "Delete" to { deleting = name },
+            )) {
+                Column(Modifier.weight(1f)) {
+                    Text("$name · ${kingdomTag(a.kingdom)}", fontWeight = FontWeight.SemiBold)
+                    val traps = a.timed.filter { it.on && it.group == BEAR_GROUP }
+                    if (traps.isNotEmpty()) Hint("🐻 " + traps.joinToString(" · ") { Notifier.shortLabel(it.label) + " " + hhmm(it.time) })
+                    for ((g, items) in a.timed.filter { it.on && it.group in choiceNames }.groupBy { it.group })
+                        Hint(withEmoji(items[0].emoji, items.joinToString(" · ") { legionName(it) + " " + hhmm(it.time) }))
+                    if (users.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+                        for (u in users) { ColorDot(u.color, 10); Hint(" ${u.name}  ") }
                     }
                 }
             }
@@ -43,65 +46,99 @@ fun AlliancesScreen(model: AppModel, modifier: Modifier) {
         Spacer(Modifier.height(8.dp))
         Button(onClick = {
             val k = s.kingdoms.keys.firstOrNull()
-            if (k == null) model.toast("Create a kingdom first (Kingdoms tab)") else editing = null to defaultAlliance(k)
+            if (k == null) model.toast("Add a kingdom first (Kingdoms tab)") else editing = null to defaultAlliance(k)
         }) { Text("Add an alliance") }
         Spacer(Modifier.height(24.dp))
     }
     editing?.let { (name, a) -> AllianceDialog(model, name, a) { editing = null } }
+    deleting?.let { name ->
+        val users = s.characters.filter { it.alliance == name }
+        ConfirmDialog("Delete $name?", "Its times are removed.", "Delete",
+            error = if (users.isEmpty()) null else "Move ${users.joinToString { it.name }} to another alliance first.",
+            onConfirm = { if (users.isEmpty()) { model.update("delete alliance $name") { it.copy(alliances = it.alliances - name) }; deleting = null } },
+            onClose = { deleting = null })
+    }
+}
+
+/** "20 UTC" -> "20:00". */
+private fun hhmm(t: String) = (normTime(t) ?: t).removeSuffix(" UTC")
+
+/** Next day (from [today]) an "every N days" rule runs. */
+private fun nextRun(r: Rule, today: Int): Int? {
+    val d = dnum(r.date) ?: return null
+    return today + mod(d - today, maxOf(1, r.every))
 }
 
 @Composable
 private fun AllianceDialog(model: AppModel, original: String?, start: Alliance, onClose: () -> Unit) {
     val s = model.state
+    val today = dayOf(model.now)
     var tag by remember { mutableStateOf(original ?: "") }
     var a by remember { mutableStateOf(start) }
-    var editing by remember { mutableStateOf<TimedItem?>(null) }
+    var editingTime by remember { mutableStateOf<TimedItem?>(null) }
+    var editingOther by remember { mutableStateOf<TimedItem?>(null) }
+    var editingDays by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
     val choiceNames = s.choiceGroups.map { it.group }.toSet()
     val users = if (original == null) emptyList() else s.characters.filter { it.alliance == original }
     val validTag = allianceTag(tag)
     val taken = validTag != null && validTag != original && validTag in s.alliances
     val v = viewFor(s, a.kingdom)
+    fun replace(x: TimedItem) { a = a.copy(timed = if (a.timed.any { it.id == x.id }) a.timed.map { if (it.id == x.id) x else it } else a.timed + x) }
 
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text(if (original == null) "New alliance" else original) },
+        title = {
+            DialogTitle(Tab.ALLIANCES.icon, original ?: "New alliance", onDelete = if (original == null) null else ({
+                if (users.isNotEmpty()) error = "Move ${users.joinToString { it.name }} to another alliance first."
+                else { model.update("delete alliance $original") { it.copy(alliances = it.alliances - original) }; onClose() }
+            }))
+        },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                OutlinedTextField(tag, { tag = it.take(3) }, label = { Text("Tag") }, singleLine = true, isError = validTag == null || taken, modifier = Modifier.fillMaxWidth())
-                Hint(when {
-                    taken -> "$validTag already exists"
-                    validTag == null -> "3 letters or digits, as in the game (e.g. Ffs)"
-                    else -> "Characters in it: " + (users.joinToString { it.name }.ifEmpty { "none" })
-                })
-                Spacer(Modifier.height(8.dp))
-                Picker("Kingdom", a.kingdom, s.kingdoms.keys.map { it to kingdomTag(it) }) { a = a.copy(kingdom = it) }
-
-                SectionTitle("Legions")
-                Hint("Characters choose one per week; change a time here when the alliance changes it.")
-                for (g in s.choiceGroups) {
-                    val items = a.timed.filter { it.group == g.group }
-                    Text(g.group, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
-                    for (it in items) ItemRow(it, v, model.now) { editing = it }
-                    TextButton(onClick = {
-                        val base = items.firstOrNull()
-                        editing = TimedItem(newId(), true, base?.emoji ?: "", "${g.group.substringBefore(' ')} (Legion ${items.size + 1})",
-                            base?.time ?: "12:00 UTC", g.group, base?.rule ?: Rule("event", ev = g.ev, from = 7, to = 7))
-                    }) { Text("Add a legion") }
+                ErrorText(error)
+                SectionCard("Alliance") {
+                    OutlinedTextField(tag, { tag = it.take(3) }, label = { Text("Tag") }, singleLine = true, isError = validTag == null || taken, modifier = Modifier.fillMaxWidth())
+                    Hint(when {
+                        taken -> "$validTag already exists"
+                        validTag == null -> "3 letters or digits, as in the game (e.g. Ffs)"
+                        else -> "Characters in it: " + (users.joinToString { it.name }.ifEmpty { "none" })
+                    })
+                    Spacer(Modifier.height(8.dp))
+                    Picker("Kingdom", a.kingdom, s.kingdoms.keys.map { it to kingdomTag(it) }) { a = a.copy(kingdom = it) }
                 }
 
-                SectionTitle("Other times")
-                Hint("Bear Traps and anything else at a fixed hour: every N days, on weekdays, or on a day of a game event.")
-                for (it in a.timed.filter { it.group !in choiceNames }) ItemRow(it, v, model.now) { editing = it }
-                TextButton(onClick = {
-                    editing = TimedItem(newId(), true, "", "", "12:00 UTC", "", Rule("every", date = diso(dayOf(model.now)), every = 1))
-                }) { Text("Add a time") }
-
-                if (original != null) {
-                    Spacer(Modifier.height(8.dp))
-                    DeleteButton("Delete alliance") {
-                        if (users.isNotEmpty()) model.toast("Move ${users.joinToString { it.name }} to another alliance first")
-                        else { model.update("delete alliance $original") { it.copy(alliances = it.alliances - original) }; onClose() }
+                SectionCard("🐻 Bear Traps") {
+                    val traps = a.timed.filter { it.group == BEAR_GROUP }
+                    if (traps.isEmpty()) TextButton(onClick = { a = a.copy(timed = defaultAlliance(a.kingdom).timed.filter { it.group == BEAR_GROUP } + a.timed) }) { Text("Add Bear Traps") }
+                    else {
+                        val r = traps[0].rule
+                        val next = if (r.type == "every") nextRun(r, today) else null
+                        ValueRow(if (r.type == "every") "Every ${r.every} days" else ruleSummary(r, v), next?.let { "next " + dayLabel(it) } ?: "set") { editingDays = true }
+                        for (t in traps) ValueRow(Notifier.shortLabel(t.label) + if (t.on) "" else " (off)", hhmm(t.time) + " UTC",
+                            timePreview(t.time, model.now).substringAfter(" · ")) { editingTime = t }
                     }
+                }
+
+                for (g in s.choiceGroups) {
+                    val items = a.timed.filter { it.group == g.group }
+                    val emoji = displayEmoji(items.firstOrNull()?.emoji ?: v.event(g.ev)?.emoji ?: "")
+                    SectionCard(listOf(emoji, g.group).filter { it.isNotBlank() }.joinToString(" ")) {
+                        for (t in items.take(2)) ValueRow(legionName(t) + if (t.on) "" else " (off)", hhmm(t.time) + " UTC",
+                            timePreview(t.time, model.now).substringAfter(" · ")) { editingTime = t }
+                        for (i in items.size until 2) TextButton(onClick = {
+                            replace(TimedItem(newId(), true, items.firstOrNull()?.emoji ?: "", "${g.group.substringBefore(' ')} (Legion ${i + 1})", "12:00 UTC",
+                                g.group, items.firstOrNull()?.rule ?: Rule("event", ev = g.ev, from = 7, to = 7)))
+                        }) { Text("Add Legion ${i + 1}") }
+                    }
+                }
+
+                SectionCard("Other times") {
+                    Hint("Anything else at a fixed hour: every N days, on weekdays, or on a day of a game event.")
+                    for (t in a.timed.filter { it.group != BEAR_GROUP && it.group !in choiceNames }) ItemRow(t, v, model.now) { editingOther = t }
+                    TextButton(onClick = {
+                        editingOther = TimedItem(newId(), true, "", "", "12:00 UTC", "", Rule("every", date = diso(today), every = 1))
+                    }) { Text("Add a time") }
                 }
             }
         },
@@ -120,27 +157,75 @@ private fun AllianceDialog(model: AppModel, original: String?, start: Alliance, 
         dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } },
     )
 
-    editing?.let { item ->
+    editingTime?.let { t -> TimeDialog(model, t, onSave = { replace(it) }, onClose = { editingTime = null }) }
+    if (editingDays) a.timed.firstOrNull { it.group == BEAR_GROUP }?.let { first ->
+        TrapDaysDialog(first.rule, today, onSave = { r -> a = a.copy(timed = a.timed.map { if (it.group == BEAR_GROUP) it.copy(rule = r) else it }) }, onClose = { editingDays = false })
+    }
+    editingOther?.let { item ->
         val isNew = a.timed.none { it.id == item.id }
         ItemDialog(model, v, item, isNew,
-            onSave = { x -> a = a.copy(timed = if (isNew) a.timed + x else a.timed.map { if (it.id == x.id) x else it }) },
+            onSave = { replace(it) },
             onDelete = { a = a.copy(timed = a.timed.filter { it.id != item.id }) },
-            onClose = { editing = null })
+            onClose = { editingOther = null })
     }
+}
+
+/** Hour of one Bear Trap or legion. */
+@Composable
+private fun TimeDialog(model: AppModel, start: TimedItem, onSave: (TimedItem) -> Unit, onClose: () -> Unit) {
+    var text by remember { mutableStateOf(hhmm(start.time)) }
+    var on by remember { mutableStateOf(start.on) }
+    val time = normTime(text)
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { DialogTitle(displayEmoji(start.emoji), Notifier.shortLabel(start.label)) },
+        text = {
+            Column {
+                OutlinedTextField(text, { text = it }, label = { Text("Time (UTC)") }, singleLine = true, isError = time == null, modifier = Modifier.fillMaxWidth())
+                Hint(if (time == null) "Type an hour, e.g. 20 or 20:30" else "Today: " + timePreview(time, model.now))
+                SwitchRow("Active", on) { on = it }
+            }
+        },
+        confirmButton = { TextButton(enabled = time != null, onClick = { onSave(start.copy(time = time!!, on = on)); onClose() }) { Text("OK") } },
+        dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } },
+    )
+}
+
+/** Which days the Bear Traps run: one setting for all of them. */
+@Composable
+private fun TrapDaysDialog(start: Rule, today: Int, onSave: (Rule) -> Unit, onClose: () -> Unit) {
+    val first = if (start.type == "every") nextRun(start, today) else null
+    var dateText by remember { mutableStateOf(diso(first ?: today)) }
+    var everyText by remember { mutableStateOf((if (start.type == "every") start.every else 2).toString()) }
+    val d = dnum(dateText)
+    val every = everyText.toIntOrNull()?.takeIf { it in 1..30 }
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { DialogTitle("🐻", "Bear Trap days") },
+        text = {
+            Column {
+                OutlinedTextField(dateText, { dateText = it.trim() }, label = { Text("A day the traps run (yyyy-mm-dd)") }, singleLine = true, isError = d == null, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(everyText, { everyText = it }, label = { Text("Every (days)") }, singleLine = true, isError = every == null, modifier = Modifier.fillMaxWidth())
+                if (d != null && every != null) Hint("Next: " + dayLabel(today + mod(d - today, every)) + ", then every $every days. Game days are UTC.")
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = d != null && every != null, onClick = { onSave(Rule("every", date = dateText, every = every!!)); onClose() }) { Text("OK") }
+        },
+        dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } },
+    )
 }
 
 @Composable
 private fun ItemRow(t: TimedItem, v: View, now: Long, onClick: () -> Unit) {
-    Card(Modifier.fillMaxWidth().padding(vertical = 3.dp).clickable(onClick = onClick)) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(withEmoji(t.emoji, t.label) + if (t.on) "" else " (off)")
-                Hint(ruleSummary(t.rule, v) + if (t.group.isNotBlank()) " · ${t.group}" else "")
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(normTime(t.time) ?: t.time, fontWeight = FontWeight.SemiBold)
-                Hint(timePreview(t.time, now).substringAfter(" · "))
-            }
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(withEmoji(t.emoji, t.label) + if (t.on) "" else " (off)")
+            Hint(ruleSummary(t.rule, v) + if (t.group.isNotBlank()) " · ${t.group}" else "")
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Text(normTime(t.time) ?: t.time, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+            Hint(timePreview(t.time, now).substringAfter(" · "))
         }
     }
 }
@@ -174,7 +259,7 @@ private fun ItemDialog(model: AppModel, v: View, start: TimedItem, isNew: Boolea
 
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text(if (isNew) "New time" else t.label.ifBlank { "Time" }) },
+        title = { DialogTitle(displayEmoji(start.emoji).ifBlank { "🕒" }, if (isNew) "New time" else start.label.ifBlank { "Time" }, onDelete = if (isNew) null else ({ onDelete(); onClose() })) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(t.label, { t = t.copy(label = it) }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -222,9 +307,8 @@ private fun ItemDialog(model: AppModel, v: View, start: TimedItem, isNew: Boolea
                 }
                 Spacer(Modifier.height(4.dp))
                 OutlinedTextField(t.group, { t = t.copy(group = it) }, label = { Text("Group (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Hint("Same group = one selector per character (e.g. Bear Traps). Legion groups: " + s.choiceGroups.joinToString { it.group } + ".")
+                Hint("Items with the same group get one selector per character instead of a switch each.")
                 SwitchRow("Active", t.on) { t = t.copy(on = it) }
-                if (!isNew) DeleteButton("Delete") { onDelete(); onClose() }
             }
         },
         confirmButton = {

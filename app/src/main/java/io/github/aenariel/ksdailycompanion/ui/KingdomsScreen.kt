@@ -20,14 +20,20 @@ fun KingdomsScreen(model: AppModel, modifier: Modifier) {
     val s = model.state
     val today = dayOf(model.now)
     var editing by remember { mutableStateOf<Pair<String?, Kingdom>?>(null) }
+    var deleting by remember { mutableStateOf<String?>(null) }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
         Text("Kingdoms", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 12.dp))
-        Hint("Each kingdom has the dates of its own rotating events (Fishing, Desert Trial…). Change them here and every alliance in the kingdom follows.")
+        Hint("Tap to edit, long-press for more. Each kingdom has the dates of its own rotating events; every alliance in it follows them.")
+        Spacer(Modifier.height(6.dp))
         for ((name, k) in s.kingdoms) {
             val v = kingdomView(s, k)
             val alliances = s.alliances.filterValues { it.kingdom == name }.keys
-            Card(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { editing = name to k }) {
-                Column(Modifier.padding(12.dp)) {
+            MenuCard(onClick = { editing = name to k }, menu = listOf(
+                "Edit" to { editing = name to k },
+                "Duplicate" to { editing = null to k },
+                "Delete" to { deleting = name },
+            )) {
+                Column(Modifier.weight(1f)) {
                     Text(kingdomTag(name) + if (k.variant == "old") " · Gen 4+" else "", fontWeight = FontWeight.SemiBold)
                     Hint("Alliances: " + alliances.joinToString(", ").ifEmpty { "none" })
                     for (ev in k.cycle.filter { it.on }) Hint(withEmoji(ev.emoji, ev.name) + " · " + runText(v, ev, today), Modifier.padding(start = 8.dp))
@@ -39,6 +45,13 @@ fun KingdomsScreen(model: AppModel, modifier: Modifier) {
         Spacer(Modifier.height(24.dp))
     }
     editing?.let { (name, k) -> KingdomDialog(model, name, k) { editing = null } }
+    deleting?.let { name ->
+        val used = s.alliances.filterValues { it.kingdom == name }.keys
+        ConfirmDialog("Delete ${kingdomTag(name)}?", "Its event dates are removed.", "Delete",
+            error = if (used.isEmpty()) null else "Move ${used.joinToString()} to another kingdom first.",
+            onConfirm = { if (used.isEmpty()) { model.update("delete kingdom $name") { it.copy(kingdoms = it.kingdoms - name) }; deleting = null } },
+            onClose = { deleting = null })
+    }
 }
 
 private fun kingdomView(s: CompanionState, k: Kingdom) = View(s.shared.anchor, k.cycle, k.special)
@@ -57,6 +70,7 @@ private fun KingdomDialog(model: AppModel, original: String?, start: Kingdom, on
     var k by remember { mutableStateOf(start) }
     var editingEvent by remember { mutableStateOf<CycleEvent?>(null) }
     var editingSpecial by remember { mutableStateOf<SpecialEvent?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
     val valid = kingdomNumber(number)
     val taken = valid != null && valid != original && valid in s.kingdoms
     val alliances = if (original == null) emptyList() else s.alliances.filterValues { it.kingdom == original }.keys.toList()
@@ -64,9 +78,16 @@ private fun KingdomDialog(model: AppModel, original: String?, start: Kingdom, on
 
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text(if (original == null) "New kingdom" else kingdomTag(original)) },
+        title = {
+            DialogTitle(Tab.KINGDOMS.icon, if (original == null) "New kingdom" else kingdomTag(original), onDelete = if (original == null) null else ({
+                if (alliances.isNotEmpty()) error = "Move ${alliances.joinToString()} to another kingdom first."
+                else { model.update("delete kingdom $original") { it.copy(kingdoms = it.kingdoms - original) }; onClose() }
+            }))
+        },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
+              ErrorText(error)
+              SectionCard("Kingdom") {
                 OutlinedTextField(number, { t -> number = t.filter { it.isDigit() }.take(6) }, label = { Text("Kingdom number") },
                     prefix = { Text("#") }, singleLine = true, isError = valid == null || taken, modifier = Modifier.fillMaxWidth(),
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
@@ -76,8 +97,8 @@ private fun KingdomDialog(model: AppModel, original: String?, start: Kingdom, on
                     else -> "Alliances in it: " + alliances.joinToString(", ").ifEmpty { "none" }
                 })
                 SwitchRow("Gen 4+", k.variant == "old", "Desert Trial becomes Champion's Way; dates stay") { k = withVariant(k, it) }
-
-                SectionTitle("Rotating events")
+              }
+              SectionCard("Rotating events") {
                 Hint("Tap to set the date it starts; it repeats from there. Switch off what this kingdom doesn't have.")
                 for (ev in k.cycle) {
                     Row(Modifier.fillMaxWidth().clickable { editingEvent = ev }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -89,8 +110,8 @@ private fun KingdomDialog(model: AppModel, original: String?, start: Kingdom, on
                     }
                 }
                 TextButton(onClick = { editingEvent = CycleEvent(newId(), "", "", 0, 1, 28) }) { Text("Add a rotating event") }
-
-                SectionTitle("One-off events")
+              }
+              SectionCard("One-off events") {
                 Hint("Events with fixed dates in this kingdom (e.g. Buccaneer Bounty).")
                 for (sp in k.special) {
                     Row(Modifier.fillMaxWidth().clickable { editingSpecial = sp }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -102,14 +123,7 @@ private fun KingdomDialog(model: AppModel, original: String?, start: Kingdom, on
                     }
                 }
                 TextButton(onClick = { editingSpecial = SpecialEvent(newId(), "", "", diso(today), diso(today + 6)) }) { Text("Add a one-off event") }
-
-                if (original != null) {
-                    Spacer(Modifier.height(8.dp))
-                    DeleteButton("Delete kingdom") {
-                        if (alliances.isNotEmpty()) model.toast("Move ${alliances.joinToString()} to another kingdom first")
-                        else { model.update("delete kingdom $original") { it.copy(kingdoms = it.kingdoms - original) }; onClose() }
-                    }
-                }
+              }
             }
         },
         confirmButton = {
@@ -157,7 +171,7 @@ private fun RotatingEventDialog(v: View, start: CycleEvent, isNew: Boolean, toda
 
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text(if (isNew) "New rotating event" else withEmoji(e.emoji, e.name)) },
+        title = { DialogTitle(displayEmoji(start.emoji).ifBlank { "🔁" }, if (isNew) "New rotating event" else start.name, onDelete = onDelete?.let { d -> { d(); onClose() } }) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(e.name, { e = e.copy(name = it) }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -174,7 +188,6 @@ private fun RotatingEventDialog(v: View, start: CycleEvent, isNew: Boolean, toda
                     Hint(if (h.dayIdx > 0) "Running now: day ${h.dayIdx}, ends ${dayLabel(h.end)}" else "Next: ${dayLabel(h.start)} – ${dayLabel(h.end)}")
                 }
                 SwitchRow("Active", e.on) { e = e.copy(on = it) }
-                if (onDelete != null) DeleteButton("Delete") { onDelete(); onClose() }
             }
         },
         confirmButton = { TextButton(enabled = built != null, onClick = { built?.let(onSave); onClose() }) { Text("OK") } },
@@ -190,7 +203,7 @@ private fun SpecialDialog(start: SpecialEvent, isNew: Boolean, onSave: (SpecialE
     val ok = e.name.isNotBlank() && from != null && to != null && to >= from
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text(if (isNew) "New one-off event" else withEmoji(e.emoji, e.name)) },
+        title = { DialogTitle(displayEmoji(start.emoji).ifBlank { "📌" }, if (isNew) "New one-off event" else start.name, onDelete = if (isNew) null else ({ onDelete(); onClose() })) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(e.name, { e = e.copy(name = it) }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -202,7 +215,6 @@ private fun SpecialDialog(start: SpecialEvent, isNew: Boolean, onSave: (SpecialE
                 }
                 Hint("Dates as yyyy-mm-dd, UTC game days.")
                 SwitchRow("Active", e.on) { e = e.copy(on = it) }
-                if (!isNew) DeleteButton("Delete") { onDelete(); onClose() }
             }
         },
         confirmButton = { TextButton(enabled = ok, onClick = { onSave(e.copy(name = e.name.trim())); onClose() }) { Text("OK") } },

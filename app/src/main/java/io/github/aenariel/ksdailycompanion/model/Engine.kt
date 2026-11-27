@@ -91,7 +91,7 @@ data class Occurrence(
     val charId: String,
     /** Name with alliance and kingdom, e.g. "Pingu (Ffs, #1130)". */
     val charName: String,
-    /** Key for leads and on/off: "t:<itemId>", "c:<eventId>", "g:<group>". */
+    /** Key for reminder leads: "t:<itemId>", "grp:<group>" (grouped items), "c:<eventId>", "g:<legion group>". */
     val key: String,
     val emoji: String,
     val title: String,
@@ -140,7 +140,7 @@ fun occurrences(state: CompanionState, fromDay: Int, toDay: Int): List<Occurrenc
                 if (!it.on || it.group in choiceNames || "t:${it.id}" in ch.off) continue
                 if (!ruleHits(v, it.rule, n)) continue
                 val m = parseTime(it.time) ?: continue
-                out += Occurrence(ch.id, label, "t:${it.id}", it.emoji, it.label, n, m)
+                out += Occurrence(ch.id, label, if (it.group.isNotBlank()) groupKey(it.group) else "t:${it.id}", it.emoji, it.label, n, m)
             }
             for (cg in state.choiceGroups) {
                 if ("g:${cg.group}" in ch.off) continue

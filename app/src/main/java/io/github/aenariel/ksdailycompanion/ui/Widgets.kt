@@ -3,15 +3,18 @@ package io.github.aenariel.ksdailycompanion.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.aenariel.ksdailycompanion.model.*
 import java.time.ZoneId
 
@@ -125,4 +128,120 @@ fun DeleteButton(label: String, onDelete: () -> Unit) {
     TextButton(onClick = { if (armed) onDelete() else armed = true }) {
         Text(if (armed) "Tap again to delete" else label, color = MaterialTheme.colorScheme.error)
     }
+}
+
+/** Remembers which section cards are open (like KSPlanner's cards). */
+object UiPrefs {
+    private fun prefs(ctx: android.content.Context) = ctx.getSharedPreferences("ui", 0)
+    fun isOpen(ctx: android.content.Context, key: String, default: Boolean) = prefs(ctx).getBoolean("card:$key", default)
+    fun setOpen(ctx: android.content.Context, key: String, open: Boolean) = prefs(ctx).edit().putBoolean("card:$key", open).apply()
+}
+
+/**
+ * Bordered section with an upper-case title and a line under it.
+ * With a [key] it opens and closes on tap and remembers it.
+ */
+@Composable
+fun SectionCard(
+    title: String,
+    modifier: Modifier = Modifier,
+    key: String? = null,
+    defaultOpen: Boolean = true,
+    trailing: @Composable RowScope.() -> Unit = {},
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var open by remember(key) { mutableStateOf(key == null || UiPrefs.isOpen(ctx, key, defaultOpen)) }
+    Surface(
+        modifier.fillMaxWidth().padding(vertical = 6.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 32.dp)
+                    .then(if (key != null) Modifier.clickable { open = !open; UiPrefs.setOpen(ctx, key, open) } else Modifier),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (key != null) Text(if (open) "▾ " else "▸ ", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                Text(title.uppercase(), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp, modifier = Modifier.weight(1f))
+                trailing()
+            }
+            if (open) {
+                HorizontalDivider(Modifier.padding(top = 6.dp, bottom = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                content()
+            }
+        }
+    }
+}
+
+/** Dialog title: tab icon + name, and a bin that asks once more before deleting. */
+@Composable
+fun DialogTitle(icon: String, text: String, onDelete: (() -> Unit)? = null) {
+    var armed by remember { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("$icon $text", modifier = Modifier.weight(1f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        if (onDelete != null) TextButton(onClick = { if (armed) onDelete() else armed = true }) {
+            Text(if (armed) "Delete?" else "🗑️", color = if (armed) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified,
+                style = if (armed) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleLarge)
+        }
+    }
+}
+
+/** A problem shown inside the dialog that caused it (never behind it). */
+@Composable
+fun ErrorText(msg: String?) {
+    if (msg != null) Text(msg, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp))
+}
+
+/** Label on the left, value on the right; the whole row is tappable. */
+@Composable
+fun ValueRow(label: String, value: String, sub: String? = null, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(label)
+            if (sub != null) Hint(sub)
+        }
+        Text(value, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+/** List entry: tap to open, long-press for a menu. Entries named "Delete" are shown in red. */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun MenuCard(onClick: () -> Unit, menu: List<Pair<String, () -> Unit>>, content: @Composable RowScope.() -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+    Box {
+        Surface(
+            Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(shape)
+                .combinedClickable(onClick = onClick, onLongClick = { open = true }),
+            shape = shape,
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        ) {
+            Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, content = content)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            for ((label, act) in menu) DropdownMenuItem(
+                text = { Text(label, color = if (label == "Delete") MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified) },
+                onClick = { open = false; act() },
+            )
+        }
+    }
+}
+
+/** Yes/no question for actions started from a menu. */
+@Composable
+fun ConfirmDialog(title: String, text: String, confirm: String, onConfirm: () -> Unit, onClose: () -> Unit, error: String? = null) {
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text(title) },
+        text = { Column { Text(text); ErrorText(error) } },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(confirm, color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } },
+    )
 }

@@ -17,32 +17,47 @@ import io.github.aenariel.ksdailycompanion.notify.Notifier
 fun CharactersScreen(model: AppModel, modifier: Modifier) {
     val s = model.state
     var editing by remember { mutableStateOf<Character?>(null) }
+    var deleting by remember { mutableStateOf<Character?>(null) }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
         Text("Characters", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 12.dp))
-        Hint("Each character belongs to one alliance; the alliance holds the times (Alliances tab).")
+        Hint("Tap to edit, long-press for more. Each character belongs to one alliance, which holds the times.")
+        Spacer(Modifier.height(6.dp))
         for (c in s.characters) {
             val al = s.alliances[c.alliance]
-            Card(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { editing = c }) {
-                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    ColorDot(c.color, 16)
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(charLabel(s, c), fontWeight = FontWeight.SemiBold)
-                        if (al == null) Hint("Alliance missing: ${c.alliance}")
-                        val usual = s.choiceGroups.mapNotNull { g ->
-                            c.usual[g.group]?.let { u -> g.group + ": " + if (u == NONE) "not playing" else (al?.timed?.firstOrNull { it.id == u }?.let { Notifier.shortLabel(it.label) } ?: u) }
-                        }
-                        if (usual.isNotEmpty()) Hint("Usual: " + usual.joinToString(" · "))
+            fun setOn(on: Boolean) = model.update("character ${c.name} on=$on") { st -> st.copy(characters = st.characters.map { if (it.id == c.id) it.copy(on = on) else it }) }
+            MenuCard(onClick = { editing = c }, menu = listOf(
+                "Edit" to { editing = c },
+                "Duplicate" to { editing = c.copy(id = newId(), name = c.name, color = nextColor(s.characters)) },
+                (if (c.on) "Turn notifications off" else "Turn notifications on") to { setOn(!c.on) },
+                "Delete" to { deleting = c },
+            )) {
+                ColorDot(c.color, 16)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(charLabel(s, c), fontWeight = FontWeight.SemiBold)
+                    if (al == null) Hint("Alliance missing: ${c.alliance}")
+                    val usual = s.choiceGroups.mapNotNull { g ->
+                        c.usual[g.group]?.let { u -> g.group + ": " + if (u == NONE) "not playing" else (al?.timed?.firstOrNull { it.id == u }?.let { Notifier.shortLabel(it.label) } ?: u) }
                     }
-                    Switch(checked = c.on, onCheckedChange = { on -> model.update("character ${c.name} on=$on") { st -> st.copy(characters = st.characters.map { if (it.id == c.id) it.copy(on = on) else it }) } })
+                    if (usual.isNotEmpty()) Hint("Usual: " + usual.joinToString(" · "))
+                    if (!c.on) Hint("Notifications off")
                 }
+                Switch(checked = c.on, onCheckedChange = { setOn(it) })
             }
         }
         Spacer(Modifier.height(8.dp))
-        Button(onClick = { editing = Character(newId(), "", s.alliances.keys.firstOrNull() ?: "", color = nextColor(s.characters)) }) { Text("Add a character") }
+        Button(onClick = {
+            if (s.alliances.isEmpty()) model.toast("Add an alliance first (Alliances tab)")
+            else editing = Character(newId(), "", s.alliances.keys.first(), color = nextColor(s.characters))
+        }) { Text("Add a character") }
         Spacer(Modifier.height(24.dp))
     }
     editing?.let { c -> CharacterDialog(model, c) { editing = null } }
+    deleting?.let { c ->
+        ConfirmDialog("Delete ${c.name}?", "${charLabel(s, c)} and its legion picks are removed.", "Delete",
+            onConfirm = { model.update("delete character ${c.name}") { st -> st.copy(characters = st.characters.filter { it.id != c.id }, picks = st.picks - c.id) }; deleting = null },
+            onClose = { deleting = null })
+    }
 }
 
 private const val ALL_ITEMS = "*all"
@@ -58,16 +73,22 @@ private fun CharacterDialog(model: AppModel, start: Character, onClose: () -> Un
     val choiceNames = s.choiceGroups.map { it.group }.toSet()
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text(if (isNew) "New character" else c.name.ifBlank { "Character" }) },
+        title = {
+            DialogTitle(Tab.CHARACTERS.icon, if (isNew) "New character" else start.name.ifBlank { "Character" }, onDelete = if (isNew) null else ({
+                model.update("delete character ${c.name}") { st -> st.copy(characters = st.characters.filter { it.id != c.id }, picks = st.picks - c.id) }
+                onClose()
+            }))
+        },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
+              SectionCard("Character") {
                 OutlinedTextField(c.name, { c = c.copy(name = it) }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
                 Picker("Alliance", c.alliance, s.alliances.map { (n, a) -> n to "$n (${kingdomTag(a.kingdom)})" }) { c = c.copy(alliance = it) }
-                SectionTitle("Colour")
+                Spacer(Modifier.height(10.dp))
                 ColorPalette(c.color) { c = c.copy(color = it) }
-                if (al != null) {
-                    SectionTitle("Usual legion")
+              }
+                if (al != null) SectionCard("Usual legion") {
                     Hint("Used when you don't pick one for a given week. \"Ask\" sends a question on registration days.")
                     for (g in s.choiceGroups) {
                         val opts = al.timed.filter { it.on && it.group == g.group }
@@ -76,10 +97,12 @@ private fun CharacterDialog(model: AppModel, start: Character, onClose: () -> Un
                             listOf("" to "Ask") + opts.map { it.id to Notifier.shortLabel(it.label) + " · " + it.time } + listOf(NONE to "Not playing"),
                             Modifier.padding(vertical = 2.dp)) { v -> c = c.copy(usual = if (v.isEmpty()) c.usual - g.group else c.usual + (g.group to v)) }
                     }
-                    SectionTitle("Notify me about")
+                }
+                if (al != null) SectionCard("Notify me about") {
                     // Groups with several items (e.g. Bear Traps) get one selector; the rest get a switch each
                     val timed = al.timed.filter { it.on && it.group !in choiceNames }
                     val groups = timed.filter { it.group.isNotBlank() }.groupBy { it.group }.filterValues { it.size > 1 }
+                        .toList().sortedBy { if (it.first == BEAR_GROUP) 0 else 1 }.toMap()
                     for ((group, items) in groups) {
                         val keys = items.map { "t:${it.id}" }
                         val onItems = items.filter { "t:${it.id}" !in c.off }
@@ -89,7 +112,7 @@ private fun CharacterDialog(model: AppModel, start: Character, onClose: () -> Un
                             onItems.size == 1 -> onItems[0].id
                             else -> CUSTOM
                         }
-                        val opts = items.map { it.id to "${it.label} · ${normTime(it.time) ?: it.time}" } +
+                        val opts = items.map { it.id to "${Notifier.shortLabel(it.label)} · ${normTime(it.time) ?: it.time}" } +
                             listOf(ALL_ITEMS to "All", NO_ITEMS to "None") + (if (current == CUSTOM) listOf(CUSTOM to "Some") else emptyList())
                         Picker(withEmoji(items[0].emoji, group), current, opts, Modifier.padding(vertical = 2.dp)) { v ->
                             if (v != CUSTOM) {
@@ -107,13 +130,6 @@ private fun CharacterDialog(model: AppModel, start: Character, onClose: () -> Un
                     for (g in s.choiceGroups) if (al.timed.any { it.on && it.group == g.group }) rows += Triple("g:${g.group}", g.group, "legion battles and registration")
                     for (ev in viewFor(s, al.kingdom).cycle.filter { it.on && it.startTime.isNotBlank() }) rows += Triple("c:${ev.id}", withEmoji(ev.emoji, ev.name), ev.startTime)
                     for ((key, label, sub) in rows) SwitchRow(label, key !in c.off, sub) { on -> c = c.copy(off = if (on) c.off - key else c.off + key) }
-                }
-                if (!isNew) {
-                    Spacer(Modifier.height(12.dp))
-                    DeleteButton("Delete character") {
-                        model.update("delete character ${c.name}") { st -> st.copy(characters = st.characters.filter { it.id != c.id }, picks = st.picks - c.id) }
-                        onClose()
-                    }
                 }
             }
         },

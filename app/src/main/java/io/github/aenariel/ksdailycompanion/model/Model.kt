@@ -165,14 +165,33 @@ fun defaultLegionTimes(): List<TimedItem> = listOf(
 fun defaultAlliance(kingdom: String): Alliance = Alliance(
     kingdom,
     listOf(
-        TimedItem("trap1", true, "🐻", "Trap 1", "20 UTC", "Bear Traps", Rule("every", date = "2026-11-12", every = 2)),
-        TimedItem("trap2", true, "🐻", "Trap 2", "12 UTC", "Bear Traps", Rule("every", date = "2026-11-12", every = 2)),
+        TimedItem("trap1", true, "🐻", "Trap 1", "20 UTC", BEAR_GROUP, Rule("every", date = "2026-11-12", every = 2)),
+        TimedItem("trap2", true, "🐻", "Trap 2", "12 UTC", BEAR_GROUP, Rule("every", date = "2026-11-12", every = 2)),
     ) + defaultLegionTimes(),
 )
 
+/** First run: no kingdom, alliance or character; the user creates them. */
 fun freshState(shared: Shared, sharedVersion: Int): CompanionState = CompanionState(
     sharedVersion = sharedVersion,
     shared = shared,
-    kingdoms = mapOf("My kingdom" to defaultKingdom("young")),
-    alliances = mapOf("My alliance" to defaultAlliance("My kingdom")),
+    kingdoms = emptyMap(),
+    alliances = emptyMap(),
 )
+
+const val BEAR_GROUP = "Bear Traps"
+
+/** Group-level reminder key: one setting for every item of a group (e.g. both Bear Traps). */
+fun groupKey(group: String): String = "grp:$group"
+
+/** Moves per-item reminder settings ("t:trap1") of grouped items to their group key, once. */
+fun withGroupLeads(s: CompanionState): CompanionState {
+    val leads = s.settings.leads.toMutableMap()
+    var changed = false
+    for (a in s.alliances.values) for (t in a.timed) {
+        if (t.group.isBlank()) continue
+        val v = leads.remove("t:${t.id}") ?: continue
+        changed = true
+        leads.putIfAbsent(groupKey(t.group), v)
+    }
+    return if (changed) s.copy(settings = s.settings.copy(leads = leads)) else s
+}

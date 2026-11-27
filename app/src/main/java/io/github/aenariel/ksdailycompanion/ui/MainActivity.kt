@@ -7,7 +7,6 @@ import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -70,9 +69,7 @@ class MainActivity : ComponentActivity() {
         Scheduler.replan(applicationContext, "app open")
         model.refreshEvents(quiet = true)
         setContent {
-            MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
-                App(model)
-            }
+            KsTheme { App(model) }
         }
     }
 
@@ -82,8 +79,8 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Tab(val icon: String, val label: String) {
-    AGENDA("📅", "Agenda"), CHARACTERS("🧑", "Characters"), ALLIANCES("🛡️", "Alliances"), KINGDOMS("🏰", "Kingdoms"), SETTINGS("⚙️", "Settings")
+enum class Tab(val icon: String, val label: String) {
+    AGENDA("📅", "Agenda"), CHARACTERS("🤴🏻", "Characters"), ALLIANCES("🛡️", "Alliances"), KINGDOMS("🏰", "Kingdoms"), SETTINGS("⚙️", "Settings")
 }
 
 @Composable
@@ -106,7 +103,7 @@ private fun App(model: AppModel) {
     ) { pad ->
         val m = Modifier.padding(pad)
         when (tab) {
-            Tab.AGENDA -> AgendaScreen(model, m, onSetup = { tab = Tab.CHARACTERS })
+            Tab.AGENDA -> AgendaScreen(model, m, onGo = { tab = it })
             Tab.CHARACTERS -> CharactersScreen(model, m)
             Tab.ALLIANCES -> AlliancesScreen(model, m)
             Tab.KINGDOMS -> KingdomsScreen(model, m)

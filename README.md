@@ -1,4 +1,4 @@
-# KS Companion (KSDailyCompanion)
+# KSCompanion (KSDailyCompanion)
 
 Personal Android companion for Kingshot: reminds you of recurring events for each of your characters,
 with reminder times you choose (e.g. 12 h and 2 h before). Everything stays on the phone; no account, no server.

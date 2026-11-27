@@ -184,7 +184,7 @@ object Codec {
                 al[aName] = legionsOn(alliance(a), cur).copy(kingdom = kName)
                 return ImportResult(cleanDefaults(cur.copy(kingdoms = ks, alliances = al)), "Imported alliance $aName ($kName)")
             }
-            else -> throw IllegalArgumentException("Unknown file type: expected a KS Companion export or a KSDailyAgenda backup")
+            else -> throw IllegalArgumentException("Unknown file type: expected a KSCompanion export or a KSDailyAgenda backup")
         }
     }
 

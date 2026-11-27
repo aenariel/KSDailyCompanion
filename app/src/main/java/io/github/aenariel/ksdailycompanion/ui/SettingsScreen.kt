@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.aenariel.ksdailycompanion.data.Codec
@@ -40,12 +41,17 @@ private fun startSafely(ctx: Context, vararg intents: Intent) {
     } catch (e: Exception) { Log.w("Could not open ${i.component?.className ?: i.action}: ${e.javaClass.simpleName}") }
 }
 
-/** Keys that can have their own reminder times, with a readable name. */
+/** Keys that can have their own reminder times, with a readable name: Bear Traps first, then legions, other times, events. */
 private fun leadKeys(s: CompanionState): List<Pair<String, String>> {
     val out = LinkedHashMap<String, String>()
     val choice = s.choiceGroups.map { it.group }.toSet()
+    out[groupKey(BEAR_GROUP)] = "🐻 $BEAR_GROUP"
     for (g in s.choiceGroups) out["g:${g.group}"] = g.group
-    for (a in s.alliances.values) for (t in a.timed) if (t.group !in choice) out.putIfAbsent("t:${t.id}", withEmoji(t.emoji, t.label))
+    for (a in s.alliances.values) for (t in a.timed) {
+        if (t.group in choice) continue
+        if (t.group.isNotBlank()) out.putIfAbsent(groupKey(t.group), withEmoji(t.emoji, t.group))
+        else out.putIfAbsent("t:${t.id}", withEmoji(t.emoji, t.label))
+    }
     for (k in s.kingdoms.keys.ifEmpty { setOf("") }) for (ev in viewFor(s, k).cycle) if (ev.startTime.isNotBlank()) out.putIfAbsent("c:${ev.id}", withEmoji(ev.emoji, ev.name))
     return out.toList()
 }
@@ -83,74 +89,87 @@ fun SettingsScreen(model: AppModel, modifier: Modifier) {
         model.update(why) { it.copy(settings = f(it.settings)) }
 
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
-        Text("Settings", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 12.dp))
+        Text("Settings", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 12.dp, bottom = 6.dp))
 
-        SectionTitle("Reminders")
-        SettingRow("Default: before each event", fmtLeads(st.defaultLeads)) { dialog = "leads" }
-        Hint("Per event (tap to change; empty = default):")
-        for ((key, label) in leadKeys(s)) {
-            val own = st.leads[key]
-            SettingRow(label, own?.let { fmtLeads(it) } ?: "default") { dialog = "lead:$key" }
-        }
-
-        SectionTitle("Legion registration")
-        SettingRow("Ask which legion at", timePreview(timeString(st.promptMin), model.now, zone)) { dialog = "prompt" }
-        Hint("On registration days, for each character without a pick for that week.")
-
-        SectionTitle("Daily summary")
-        SwitchRow("Send a summary of the day", st.digestOn) { on -> setSettings("digest on=$on") { it.copy(digestOn = on) } }
-        if (st.digestOn) SettingRow("At", timePreview(timeString(st.digestMin), model.now, zone)) { dialog = "digest" }
-
-        SectionTitle("Game events")
-        Hint("Fixed events v${s.sharedVersion} (cycle from ${s.shared.anchor}), shared with KSDailyAgenda and the same in every kingdom. Switched-off events are hidden from the agenda and the summary.")
-        Row {
-            TextButton(onClick = { model.refreshEvents(quiet = false) }) { Text("Check for updates") }
-            TextButton(onClick = { showFixed = !showFixed }) { Text(if (showFixed) "Hide list" else "Show list") }
-        }
-        if (showFixed) for (ev in s.shared.cycle) {
-            val sub = "${ev.len} day(s) every ${ev.every}" + (if (ev.startTime.isNotBlank()) ", starts ${ev.startTime}" else "")
-            SwitchRow(withEmoji(ev.emoji, ev.name), ev.on, sub) { on ->
-                model.update("event ${ev.id} on=$on") { st -> st.copy(shared = st.shared.copy(cycle = st.shared.cycle.map { if (it.id == ev.id) it.copy(on = on) else it })) }
+        SectionCard("Reminders", key = "set-reminders") {
+            ValueRow("Default: before each event", fmtLeads(st.defaultLeads)) { dialog = "leads" }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Hint("Per event (tap to change; empty = default):", Modifier.padding(top = 6.dp))
+            for ((key, label) in leadKeys(s)) {
+                val own = st.leads[key]
+                ValueRow(label, own?.let { fmtLeads(it) } ?: "default") { dialog = "lead:$key" }
             }
         }
 
-        SectionTitle("Notifications on this phone")
-        Text(if (model.notificationsAllowed) "Allowed" else "Not allowed — reminders will not show")
-        Row {
-            TextButton(onClick = { openNotificationSettings(ctx) }) { Text("Notification settings") }
-            TextButton(onClick = { Notifier.test(ctx) }) { Text("Send a test") }
-        }
-        Hint("Xiaomi/HyperOS and some other phones stop apps in the background. Turn on Autostart and set Battery saver to \"No restrictions\" for this app.")
-        Row {
-            TextButton(onClick = {
-                startSafely(ctx,
-                    Intent().setComponent(ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")),
-                    appDetails(ctx))
-            }) { Text("Autostart") }
-            TextButton(onClick = { startSafely(ctx, Intent(AndroidSettings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS), appDetails(ctx)) }) { Text("Battery") }
-            TextButton(onClick = { startSafely(ctx, appDetails(ctx)) }) { Text("App info") }
-        }
-        val next = Store.scheduledFor(ctx)
-        if (next > 0) Hint("Next check: ${dayLabel(dayOf(next))} ${fmtBoth(next, zone)}")
-
-        SectionTitle("Backup and import")
-        Hint("Export saves characters, alliances, times, picks and settings. Import also reads a KSDailyAgenda backup (\"Download settings\" or \"Show everything\"): its alliances and kingdoms are added, the rest stays.")
-        Row {
-            TextButton(onClick = { exporter.launch("ks-companion-${diso(dayOf(model.now))}.json") }) { Text("Export") }
-            TextButton(onClick = { importer.launch(arrayOf("application/json", "text/plain", "*/*")) }) { Text("Import file") }
-            TextButton(onClick = { dialog = "paste" }) { Text("Paste") }
+        SectionCard("Legion registration", key = "set-legion") {
+            ValueRow("Ask which legion at", timePreview(timeString(st.promptMin), model.now, zone),
+                "On registration days, for each character without a pick for that week.") { dialog = "prompt" }
         }
 
-        SectionTitle("Log")
-        Row {
-            TextButton(onClick = { showLog = !showLog }) { Text(if (showLog) "Hide log" else "Show log") }
-            if (showLog) TextButton(onClick = { Log.clear(); showLog = false }) { Text("Clear") }
+        SectionCard("Daily summary", key = "set-digest") {
+            SwitchRow("Send a summary of the day", st.digestOn) { on -> setSettings("digest on=$on") { it.copy(digestOn = on) } }
+            if (st.digestOn) ValueRow("At", timePreview(timeString(st.digestMin), model.now, zone)) { dialog = "digest" }
         }
-        if (showLog) SelectionContainer {
-            Text(Log.read().take(200).joinToString("\n"), fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+
+        SectionCard("Game events", key = "set-events", defaultOpen = false) {
+            Hint("Fixed events v${s.sharedVersion} (cycle from ${s.shared.anchor}), shared with KSDailyAgenda and the same in every kingdom. Switched-off events are hidden from the agenda and the summary.")
+            Row {
+                TextButton(onClick = { model.refreshEvents(quiet = false) }) { Text("Check for updates") }
+                TextButton(onClick = { showFixed = !showFixed }) { Text(if (showFixed) "Hide list" else "Show list") }
+            }
+            if (showFixed) for (ev in s.shared.cycle) {
+                val sub = "${ev.len} day(s) every ${ev.every}" + (if (ev.startTime.isNotBlank()) ", starts ${ev.startTime}" else "")
+                SwitchRow(withEmoji(ev.emoji, ev.name), ev.on, sub) { on ->
+                    model.update("event ${ev.id} on=$on") { st -> st.copy(shared = st.shared.copy(cycle = st.shared.cycle.map { if (it.id == ev.id) it.copy(on = on) else it })) }
+                }
+            }
         }
-        Hint("Events file: ${st.eventsUrl}")
-        Spacer(Modifier.height(24.dp))
+
+        SectionCard("Notifications on this phone", key = "set-notif") {
+            Text(if (model.notificationsAllowed) "Allowed" else "Not allowed — reminders will not show",
+                color = if (model.notificationsAllowed) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
+            Row {
+                TextButton(onClick = { openNotificationSettings(ctx) }) { Text("Notification settings") }
+                TextButton(onClick = { Notifier.test(ctx) }) { Text("Send a test") }
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Hint("Xiaomi/HyperOS and some other phones stop apps in the background. Turn on Autostart and set Battery saver to \"No restrictions\" for this app.",
+                Modifier.padding(top = 6.dp))
+            Row {
+                TextButton(onClick = {
+                    startSafely(ctx,
+                        Intent().setComponent(ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")),
+                        appDetails(ctx))
+                }) { Text("Autostart") }
+                TextButton(onClick = { startSafely(ctx, Intent(AndroidSettings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS), appDetails(ctx)) }) { Text("Battery") }
+                TextButton(onClick = { startSafely(ctx, appDetails(ctx)) }) { Text("App info") }
+            }
+            val next = Store.scheduledFor(ctx)
+            if (next > 0) Hint("Next check: ${dayLabel(dayOf(next))} ${fmtBoth(next, zone)}")
+        }
+
+        SectionCard("Backup and import", key = "set-backup") {
+            Hint("Export saves characters, alliances, kingdoms, times, picks and settings. Import also reads a KSDailyAgenda backup (\"Download settings\" or \"Show everything\"): its alliances and kingdoms are added, the rest stays.")
+            Row {
+                TextButton(onClick = { exporter.launch("kscompanion-${diso(dayOf(model.now))}.json") }) { Text("Export") }
+                TextButton(onClick = { importer.launch(arrayOf("application/json", "text/plain", "*/*")) }) { Text("Import file") }
+                TextButton(onClick = { dialog = "paste" }) { Text("Paste") }
+            }
+        }
+
+        SectionCard("Log", key = "set-log", defaultOpen = false) {
+            Row {
+                TextButton(onClick = { showLog = !showLog }) { Text(if (showLog) "Hide log" else "Show log") }
+                if (showLog) TextButton(onClick = { Log.clear(); showLog = false }) { Text("Clear") }
+            }
+            if (showLog) SelectionContainer {
+                Text(Log.read().take(200).joinToString("\n"), fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+            }
+            Hint("Events file: ${st.eventsUrl}")
+        }
+
+        Text("Made by Pingu 🐧 (#1130/#2116)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 24.dp))
     }
 
     val d = dialog

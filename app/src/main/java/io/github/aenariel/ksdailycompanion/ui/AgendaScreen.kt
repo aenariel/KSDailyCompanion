@@ -14,6 +14,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -25,7 +27,7 @@ import java.time.ZoneId
 private const val ALL = "*"
 
 @Composable
-fun AgendaScreen(model: AppModel, modifier: Modifier, onSetup: () -> Unit) {
+fun AgendaScreen(model: AppModel, modifier: Modifier, onGo: (Tab) -> Unit) {
     val s = model.state
     val now = model.now
     val zone = ZoneId.systemDefault()
@@ -47,20 +49,23 @@ fun AgendaScreen(model: AppModel, modifier: Modifier, onSetup: () -> Unit) {
         item {
             Text("Next 7 days", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 12.dp))
             Hint("Game days are UTC days. Times: UTC · your local time (${zone.id}).")
-            if (!model.notificationsAllowed) Card(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                Column(Modifier.padding(12.dp)) {
-                    Text("Notifications are off for this app.")
-                    TextButton(onClick = {
-                        if (Build.VERSION.SDK_INT >= 33) permission.launch(Manifest.permission.POST_NOTIFICATIONS) else openNotificationSettings(ctx)
-                    }) { Text("Allow notifications") }
-                }
+            if (!model.notificationsAllowed) SectionCard("Notifications are off") {
+                Text("Reminders can't show until notifications are allowed for this app.")
+                TextButton(onClick = {
+                    if (Build.VERSION.SDK_INT >= 33) permission.launch(Manifest.permission.POST_NOTIFICATIONS) else openNotificationSettings(ctx)
+                }) { Text("Allow notifications") }
             }
-            if (s.characters.isEmpty()) Card(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                Column(Modifier.padding(12.dp)) {
-                    Text("No characters yet.")
-                    Hint("Add your characters and pick their alliance. Set the alliance's Bear Trap and legion times under Alliances.")
-                    TextButton(onClick = onSetup) { Text("Add a character") }
+            if (s.characters.isEmpty()) SectionCard("Getting started") {
+                val steps = listOf(
+                    Triple(Tab.KINGDOMS, "Add your kingdom", s.kingdoms.isNotEmpty()),
+                    Triple(Tab.ALLIANCES, "Add your alliance: Bear Trap and legion times", s.alliances.isNotEmpty()),
+                    Triple(Tab.CHARACTERS, "Add your characters", false),
+                )
+                for ((i, st) in steps.withIndex()) {
+                    val (tab, text, done) = st
+                    ValueRow("${i + 1}. ${tab.icon} $text", if (done) "✓" else "Open") { onGo(tab) }
                 }
+                Hint("Or import a KSDailyAgenda backup in Settings.")
             } else if (s.characters.size > 1) {
                 Spacer(Modifier.height(8.dp))
                 Picker("Showing", who, listOf(ALL to "All characters") + s.characters.map { it.id to charLabel(s, it) }) { who = it }
@@ -69,18 +74,18 @@ fun AgendaScreen(model: AppModel, modifier: Modifier, onSetup: () -> Unit) {
         for (n in today..today + 6) {
             val rows = occ.filter { it.day == n }
             item(key = "day$n") {
-                Text((if (n == today) "Today · " else if (n == today + 1) "Tomorrow · " else "") + dayLabel(n),
-                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 16.dp, bottom = 2.dp))
-                for (k in kingdoms) {
-                    val ev = dayEvents(viewFor(s, k), n)
-                    if (ev.isEmpty()) continue
-                    if (kingdoms.size > 1) Text(kingdomTag(k), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 4.dp))
-                    for (e in ev) Hint(dayEventLabel(e), Modifier.padding(start = 8.dp))
+                SectionCard((if (n == today) "Today · " else if (n == today + 1) "Tomorrow · " else "") + dayLabel(n)) {
+                    for (k in kingdoms) {
+                        val ev = dayEvents(viewFor(s, k), n)
+                        if (ev.isEmpty()) continue
+                        if (kingdoms.size > 1) Text(kingdomTag(k), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 2.dp))
+                        for (e in ev) Hint(dayEventLabel(e), Modifier.padding(start = 8.dp))
+                    }
+                    if (kingdoms.isNotEmpty() && rows.isNotEmpty()) Spacer(Modifier.height(6.dp))
+                    if (rows.isEmpty()) Hint("Nothing with a time.", Modifier.padding(top = 4.dp))
+                    for (o in rows) OccurrenceRow(o, colors[o.charId] ?: 0, now, zone, multi = s.characters.size > 1) { choosing = o }
                 }
-                if (rows.isEmpty()) Hint("Nothing with a time.", Modifier.padding(top = 4.dp))
-            }
-            items(rows, key = { "${it.charId}|${it.key}|${it.day}|${it.minute}|${it.title}" }) { o ->
-                OccurrenceRow(o, colors[o.charId] ?: 0, now, zone, multi = s.characters.size > 1) { choosing = o }
             }
         }
         item { Spacer(Modifier.height(24.dp)) }
@@ -93,7 +98,9 @@ fun AgendaScreen(model: AppModel, modifier: Modifier, onSetup: () -> Unit) {
 private fun OccurrenceRow(o: Occurrence, color: Int, now: Long, zone: ZoneId, multi: Boolean, onChoose: () -> Unit) {
     val past = o.minute != null && o.atMs < now
     val clickable = o.choice != null
-    Card(Modifier.fillMaxWidth().padding(vertical = 3.dp).alpha(if (past) 0.5f else 1f).let { if (clickable) it.clickable(onClick = onChoose) else it }) {
+    Surface(Modifier.fillMaxWidth().padding(vertical = 3.dp).alpha(if (past) 0.5f else 1f).clip(RoundedCornerShape(8.dp))
+        .let { if (clickable) it.clickable(onClick = onChoose) else it },
+        shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest) {
         Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(6.dp).fillMaxHeight().background(if (color != 0) Color(color) else Color.Transparent))
             Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -136,7 +143,7 @@ private fun LegionDialog(model: AppModel, o: Occurrence, onClose: () -> Unit) {
     val now = model.now
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text(c.group.group) },
+        title = { DialogTitle(o.emoji.let { displayEmoji(it) }, c.group.group) },
         text = {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {

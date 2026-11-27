@@ -18,7 +18,9 @@ class EngineTest {
         ),
         listOf(SpecialEvent("fantasy1", "✨", "Fantasy Theater", "2026-11-09", "2026-11-15")),
     )
-    private val base = freshState(shared, 1)
+    private val base = freshState(shared, 1).let {
+        it.copy(kingdoms = mapOf("My kingdom" to defaultKingdom("young")), alliances = mapOf("My alliance" to defaultAlliance("My kingdom")))
+    }
     private val view = viewFor(base, "My kingdom")
     private fun d(iso: String) = dnum(iso)!!
     private fun ms(iso: String, hhmm: String): Long {
@@ -94,7 +96,7 @@ class EngineTest {
     @Test fun mergedReminders() {
         val st = base.copy(characters = listOf(Character("a", "A", "My alliance"), Character("b", "B", "My alliance")))
         val traps = dueBetween(st, ms("2026-11-28", "00:00"), ms("2026-11-28", "23:59"))
-            .filterIsInstance<Due.Reminder>().filter { it.occ.key == "t:trap1" }
+            .filterIsInstance<Due.Reminder>().filter { it.occ.key == groupKey(BEAR_GROUP) && it.occ.title == "Trap 1" }
         // Trap 1 at 20 UTC on the 28th: 12h before (08:00) and 2h before (18:00), one reminder for both characters
         assertEquals(listOf(ms("2026-11-28", "08:00"), ms("2026-11-28", "18:00")), traps.map { it.fireAt })
         assertEquals(listOf("A (My alliance, My kingdom)", "B (My alliance, My kingdom)"), traps.first().charNames)
@@ -150,5 +152,13 @@ class EngineTest {
         val desert = viewFor(base, "My kingdom").event("desert")!!
         assertEquals(d("2026-11-25"), currentOrNext(view, desert, d("2026-11-27")).start)
         assertEquals(d("2026-12-09"), currentOrNext(view, desert, d("2026-11-28")).start)
+    }
+
+    @Test fun groupLeadsMigration() {
+        val st = base.copy(settings = Settings(leads = mapOf("t:trap1" to listOf(30), "t:trap2" to listOf(30), "c:castle" to listOf(60))))
+        val m = withGroupLeads(st)
+        assertEquals(mapOf(groupKey(BEAR_GROUP) to listOf(30), "c:castle" to listOf(60)), m.settings.leads)
+        assertEquals(m, withGroupLeads(m))
+        assertTrue(freshState(shared, 1).alliances.isEmpty() && freshState(shared, 1).kingdoms.isEmpty())
     }
 }

@@ -33,6 +33,7 @@ object Store {
             Log.i("Bundled events v$bundledVer newer than saved v${s.sharedVersion}: updating")
             s = s.copy(shared = Codec.mergeShared(s.shared, bundled), sharedVersion = bundledVer)
         }
+        withGroupLeads(s).let { if (it != s) { Log.i("Moved per-item reminder times to their groups"); s = it } }
         withColors(s).let { if (it != s) { Log.i("Gave colours to ${s.characters.count { c -> c.color == 0 }} characters"); s = it } }
         Log.i("Loaded state: ${s.characters.size} characters, ${s.alliances.size} alliances, ${s.kingdoms.size} kingdoms, events v${s.sharedVersion} (${System.currentTimeMillis() - t0} ms)")
         cached = s
