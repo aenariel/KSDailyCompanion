@@ -27,7 +27,8 @@ jobs:
 
       - name: Version
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then V="${GITHUB_REF_NAME#v}"; else V="0.1.${GITHUB_RUN_NUMBER}"; fi
+          # v0.1.0 -> 0.1.0; a stray dot (v.0.1.0) is dropped too
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then V="${GITHUB_REF_NAME#v}"; V="${V#.}"; else V="0.1.${GITHUB_RUN_NUMBER}"; fi
           echo "VERSION_NAME=$V" >> "$GITHUB_ENV"
           echo "VERSION_CODE=${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
           echo "Version $V (code ${GITHUB_RUN_NUMBER}) from $GITHUB_REF"

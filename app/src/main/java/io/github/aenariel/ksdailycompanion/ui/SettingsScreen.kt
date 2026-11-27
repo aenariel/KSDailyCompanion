@@ -45,8 +45,8 @@ private fun leadKeys(s: CompanionState): List<Pair<String, String>> {
     val out = LinkedHashMap<String, String>()
     val choice = s.choiceGroups.map { it.group }.toSet()
     for (g in s.choiceGroups) out["g:${g.group}"] = g.group
-    for (a in s.alliances.values) for (t in a.timed) if (t.group !in choice) out.putIfAbsent("t:${t.id}", "${t.emoji.trim()} ${t.label}".trim())
-    for (k in s.kingdoms.keys.ifEmpty { setOf("") }) for (ev in viewFor(s, k).cycle) if (ev.startTime.isNotBlank()) out.putIfAbsent("c:${ev.id}", "${ev.emoji.trim()} ${ev.name}".trim())
+    for (a in s.alliances.values) for (t in a.timed) if (t.group !in choice) out.putIfAbsent("t:${t.id}", withEmoji(t.emoji, t.label))
+    for (k in s.kingdoms.keys.ifEmpty { setOf("") }) for (ev in viewFor(s, k).cycle) if (ev.startTime.isNotBlank()) out.putIfAbsent("c:${ev.id}", withEmoji(ev.emoji, ev.name))
     return out.toList()
 }
 
@@ -58,6 +58,7 @@ fun SettingsScreen(model: AppModel, modifier: Modifier) {
     val zone = ZoneId.systemDefault()
     var dialog by remember { mutableStateOf<String?>(null) }   // "leads", "lead:<key>", "prompt", "digest", "paste", "log"
     var showLog by remember { mutableStateOf(false) }
+    var showFixed by remember { mutableStateOf(false) }
 
     val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) try {
@@ -99,6 +100,19 @@ fun SettingsScreen(model: AppModel, modifier: Modifier) {
         SectionTitle("Daily summary")
         SwitchRow("Send a summary of the day", st.digestOn) { on -> setSettings("digest on=$on") { it.copy(digestOn = on) } }
         if (st.digestOn) SettingRow("At", timePreview(timeString(st.digestMin), model.now, zone)) { dialog = "digest" }
+
+        SectionTitle("Game events")
+        Hint("Fixed events v${s.sharedVersion} (cycle from ${s.shared.anchor}), shared with KSDailyAgenda and the same in every kingdom. Switched-off events are hidden from the agenda and the summary.")
+        Row {
+            TextButton(onClick = { model.refreshEvents(quiet = false) }) { Text("Check for updates") }
+            TextButton(onClick = { showFixed = !showFixed }) { Text(if (showFixed) "Hide list" else "Show list") }
+        }
+        if (showFixed) for (ev in s.shared.cycle) {
+            val sub = "${ev.len} day(s) every ${ev.every}" + (if (ev.startTime.isNotBlank()) ", starts ${ev.startTime}" else "")
+            SwitchRow(withEmoji(ev.emoji, ev.name), ev.on, sub) { on ->
+                model.update("event ${ev.id} on=$on") { st -> st.copy(shared = st.shared.copy(cycle = st.shared.cycle.map { if (it.id == ev.id) it.copy(on = on) else it })) }
+            }
+        }
 
         SectionTitle("Notifications on this phone")
         Text(if (model.notificationsAllowed) "Allowed" else "Not allowed — reminders will not show")

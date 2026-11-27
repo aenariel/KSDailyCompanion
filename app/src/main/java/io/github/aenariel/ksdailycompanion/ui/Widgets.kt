@@ -1,5 +1,8 @@
 package io.github.aenariel.ksdailycompanion.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
@@ -85,4 +88,41 @@ fun ruleSummary(r: Rule, v: View): String = when (r.type) {
         "$name, day ${r.from}" + (if (to != r.from) "–$to" else "")
     }
     else -> r.type
+}
+
+@Composable
+fun ColorDot(color: Int, size: Int = 12, modifier: Modifier = Modifier) {
+    androidx.compose.foundation.layout.Box(
+        modifier.size(size.dp).background(androidx.compose.ui.graphics.Color(color), androidx.compose.foundation.shape.CircleShape)
+    )
+}
+
+/** Row of colour circles; the chosen one has a ring. */
+@Composable
+fun ColorPalette(selected: Int, onPick: (Int) -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        for (c in PALETTE) {
+            val ring = if (c == selected) MaterialTheme.colorScheme.onSurface else androidx.compose.ui.graphics.Color.Transparent
+            Box(
+                Modifier.size(28.dp).border(2.dp, ring, androidx.compose.foundation.shape.CircleShape).padding(4.dp)
+                    .background(androidx.compose.ui.graphics.Color(c), androidx.compose.foundation.shape.CircleShape)
+                    .clickable { onPick(c) }
+            )
+        }
+    }
+}
+
+/** Kingdom numbers only: "#1130" or "1130" -> "1130"; null when not a number. */
+fun kingdomNumber(text: String): String? = text.trim().removePrefix("#").trim().takeIf { it.isNotEmpty() && it.length <= 6 && it.all { c -> c.isDigit() } }
+
+/** Alliance tags are exactly 3 letters or digits. */
+fun allianceTag(text: String): String? = text.trim().takeIf { it.length == 3 && it.all { c -> c.isLetterOrDigit() } }
+
+/** Confirm-by-second-tap delete button. */
+@Composable
+fun DeleteButton(label: String, onDelete: () -> Unit) {
+    var armed by remember { mutableStateOf(false) }
+    TextButton(onClick = { if (armed) onDelete() else armed = true }) {
+        Text(if (armed) "Tap again to delete" else label, color = MaterialTheme.colorScheme.error)
+    }
 }

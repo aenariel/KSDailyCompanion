@@ -68,12 +68,12 @@ object Codec {
 
     fun character(o: JSONObject): Character {
         val off = o.optJSONArray("off")?.let { a -> (0 until a.length()).map { a.optString(it) }.toSet() } ?: emptySet()
-        return Character(o.str("id", newId()), o.str("name"), o.str("alliance"), o.optBoolean("on", true), off, strMap(o.optJSONObject("usual")))
+        return Character(o.str("id", newId()), o.str("name"), o.str("alliance"), o.optBoolean("on", true), off, strMap(o.optJSONObject("usual")), o.optInt("color", 0))
     }
 
     fun character(c: Character): JSONObject = JSONObject()
         .put("id", c.id).put("name", c.name).put("alliance", c.alliance).put("on", c.on)
-        .put("off", arr(c.off.sorted())).put("usual", strMap(c.usual))
+        .put("off", arr(c.off.sorted())).put("usual", strMap(c.usual)).put("color", c.color)
 
     fun choice(o: JSONObject) = ChoiceGroup(o.str("group"), o.str("ev"), o.optInt("regFrom", 3), o.optInt("regTo", 4))
     fun choice(c: ChoiceGroup): JSONObject = JSONObject().put("group", c.group).put("ev", c.ev).put("regFrom", c.regFrom).put("regTo", c.regTo)
@@ -155,7 +155,7 @@ object Codec {
             "ks-companion" -> {
                 val st = o.optJSONObject("state") ?: throw IllegalArgumentException("Companion file without state")
                 val s = state(st, cur.shared)
-                return ImportResult(s, "Replaced everything: ${s.characters.size} characters, ${s.alliances.size} alliances")
+                return ImportResult(withColors(s), "Replaced everything: ${s.characters.size} characters, ${s.alliances.size} alliances")
             }
             "ks-agenda-all" -> {
                 val st = o.optJSONObject("state") ?: throw IllegalArgumentException("Agenda backup without state")

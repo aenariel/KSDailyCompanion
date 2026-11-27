@@ -62,21 +62,21 @@ object Notifier {
     fun post(ctx: Context, s: CompanionState, due: List<Due>, now: Long) {
         val zone = ZoneId.systemDefault()
         for (d in due) when (d) {
-            is Due.Reminder -> reminder(ctx, d, now, zone)
-            is Due.Prompt -> prompt(ctx, d, zone, s)
+            is Due.Reminder -> reminder(ctx, d, now, zone, s.characters.firstOrNull { it.id == d.occ.charId }?.color ?: 0)
+            is Due.Prompt -> prompt(ctx, d, zone, s, s.characters.firstOrNull { it.id == d.charId }?.color ?: 0)
             is Due.Digest -> digest(ctx, s, d, zone)
         }
     }
 
-    private fun reminder(ctx: Context, d: Due.Reminder, now: Long, zone: ZoneId) {
+    private fun reminder(ctx: Context, d: Due.Reminder, now: Long, zone: ZoneId, color: Int) {
         val o = d.occ
         if (o.atMs < now - 5 * MIN_MS) { Log.i("Skip reminder for ${o.title}: already started"); return }
         val left = ((o.atMs - now + 30_000) / MIN_MS).toInt()
-        val title = listOf(o.emoji.trim(), o.title, fmtIn(left)).filter { it.isNotEmpty() }.joinToString(" ")
+        val title = withEmoji(o.emoji, o.title) + " " + fmtIn(left)
         val text = d.charNames.joinToString(", ") + " · " + fmtBoth(o.atMs, zone)
         Log.i("Notify reminder: $title — $text (lead ${fmtLead(d.lead)})")
         show(ctx, d.id.hashCode(), builder(ctx, CH_REMINDERS).setContentTitle(title).setContentText(text)
-            .setWhen(o.atMs).setShowWhen(true).setCategory(NotificationCompat.CATEGORY_REMINDER))
+            .setWhen(o.atMs).setShowWhen(true).setCategory(NotificationCompat.CATEGORY_REMINDER).also { if (color != 0) it.setColor(color) })
     }
 
     /** "Swordland (Legion 2)" -> "Legion 2". */
@@ -89,17 +89,18 @@ object Notifier {
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 
-    private fun prompt(ctx: Context, d: Due.Prompt, zone: ZoneId, s: CompanionState) {
+    private fun prompt(ctx: Context, d: Due.Prompt, zone: ZoneId, s: CompanionState, color: Int) {
         val notifId = "p|${d.charId}|${d.occKey}".hashCode()
         val usual = d.usual?.let { u -> if (u == NONE) "not playing" else d.options.firstOrNull { it.id == u }?.let { shortLabel(it.label) } }
         val times = d.options.joinToString("\n") { o ->
             val m = parseTime(o.time)
             shortLabel(o.label) + ": " + (m?.let { fmtBoth(battleMs(s, d, o) ?: (it * MIN_MS), zone) } ?: o.time)
         }
-        val title = "${d.options.first().emoji.trim()} ${d.group.group}: which legion?".trim()
+        val title = withEmoji(d.options.first().emoji, "${d.group.group}: which legion?")
         val text = "${d.charName} — registration is open." + (usual?.let { " Usual: $it." } ?: "")
         val b = builder(ctx, CH_LEGION).setContentTitle(title).setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText("$text\n$times" + if (d.options.size > 2) "\nMore legions: open the app." else ""))
+        if (color != 0) b.setColor(color)
         for (o in d.options.take(2)) b.addAction(0, shortLabel(o.label), pickIntent(ctx, d.charId, d.occKey, o.id, notifId))
         b.addAction(0, "Not playing", pickIntent(ctx, d.charId, d.occKey, NONE, notifId))
         Log.i("Notify legion question: ${d.charName} ${d.occKey}, ${d.options.size} options")
@@ -121,11 +122,12 @@ object Notifier {
     fun confirmPick(ctx: Context, s: CompanionState, charId: String, occ: String, item: String, notifId: Int) {
         val ch = s.characters.firstOrNull { it.id == charId } ?: return
         val group = occ.substringBeforeLast('@')
-        val text = if (item == NONE) "${ch.name}: not playing $group" else {
+        val who = charLabel(s, ch)
+        val text = if (item == NONE) "$who: not playing $group" else {
             val o = s.alliances[ch.alliance]?.timed?.firstOrNull { it.id == item }
             val cg = s.choiceGroups.firstOrNull { it.group == group }
             val at = if (o != null && cg != null) battleMs(s, Due.Prompt("", 0, charId, ch.name, cg, occ, listOf(o), null), o) else null
-            "${ch.name}: ${o?.label ?: item}" + (at?.let { " · ${dayLabel(dayOf(it))} ${fmtBoth(it, ZoneId.systemDefault())}" } ?: "")
+            "$who: ${o?.label ?: item}" + (at?.let { " · ${dayLabel(dayOf(it))} ${fmtBoth(it, ZoneId.systemDefault())}" } ?: "")
         }
         show(ctx, notifId, builder(ctx, CH_LEGION).setContentTitle("Saved").setContentText(text).setSilent(true).setTimeoutAfter(15_000))
     }
@@ -135,14 +137,16 @@ object Notifier {
         val kingdoms = s.characters.filter { it.on }.mapNotNull { s.alliances[it.alliance]?.kingdom }.distinct()
         for (k in kingdoms) {
             val ev = dayEvents(viewFor(s, k), d.day).map { dayEventLabel(it) }
-            if (ev.isNotEmpty()) lines += (if (kingdoms.size > 1) "$k: " else "") + ev.joinToString(", ")
+            if (ev.isEmpty()) continue
+            if (kingdoms.size > 1) lines += kingdomTag(k)
+            for (e in ev) lines += (if (kingdoms.size > 1) "  " else "") + e
         }
         val occ = occurrences(s, d.day, d.day)
         val merged = LinkedHashMap<String, MutableList<String>>()
         for (o in occ) {
             val label = when (o.kind) {
-                Kind.TIMED -> "${fmtBoth(o.atMs, zone)} · ${o.emoji.trim()} ${o.title}"
-                Kind.CHOICE_PENDING -> "${o.emoji.trim()} ${o.title}: legion not set"
+                Kind.TIMED -> "${fmtBoth(o.atMs, zone)} · ${withEmoji(o.emoji, o.title)}"
+                Kind.CHOICE_PENDING -> "${withEmoji(o.emoji, o.title)}: legion not set"
                 Kind.CHOICE_NONE -> continue
             }
             merged.getOrPut(label) { ArrayList() } += o.charName

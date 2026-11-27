@@ -89,6 +89,7 @@ data class ChoiceInfo(val group: ChoiceGroup, val occKey: String, val options: L
 
 data class Occurrence(
     val charId: String,
+    /** Name with alliance and kingdom, e.g. "Pingu (Ffs, #1130)". */
     val charName: String,
     /** Key for leads and on/off: "t:<itemId>", "c:<eventId>", "g:<group>". */
     val key: String,
@@ -105,6 +106,26 @@ data class Occurrence(
 
 fun occKey(group: String, startDay: Int): String = "$group@${diso(startDay)}"
 
+/** "1130" -> "#1130"; names that are not a number stay as they are. */
+fun kingdomTag(name: String): String = if (name.isNotEmpty() && name.all { it.isDigit() }) "#$name" else name
+
+/** "Pingu (Ffs, #1130)": tells apart characters with the same name. */
+fun charLabel(state: CompanionState, ch: Character): String {
+    val al = state.alliances[ch.alliance] ?: return "${ch.name} (${ch.alliance})"
+    return "${ch.name} (${ch.alliance}, ${kingdomTag(al.kingdom)})"
+}
+
+/** Cycle offset so that an event of period [every] starts on [date]. */
+fun startFromDate(v: View, date: Int, every: Int): Int = mod(date - v.anchorN, max(1, every))
+
+/** The current run of an event if it is on, else the next one. */
+fun currentOrNext(v: View, ev: CycleEvent, n: Int): Hit {
+    cycleHit(v, ev, n)?.let { return it }
+    val every = max(1, ev.every)
+    val s = n + (every - mod(n - v.anchorN - ev.start, every))
+    return Hit(s, s + max(1, ev.len) - 1, 0)
+}
+
 /** Everything with a date for the characters that are on, days [fromDay, toDay], sorted by time. */
 fun occurrences(state: CompanionState, fromDay: Int, toDay: Int): List<Occurrence> {
     val out = ArrayList<Occurrence>()
@@ -113,12 +134,13 @@ fun occurrences(state: CompanionState, fromDay: Int, toDay: Int): List<Occurrenc
         if (!ch.on) continue
         val al = state.alliances[ch.alliance] ?: continue
         val v = viewFor(state, al.kingdom)
+        val label = charLabel(state, ch)
         for (n in fromDay..toDay) {
             for (it in al.timed) {
                 if (!it.on || it.group in choiceNames || "t:${it.id}" in ch.off) continue
                 if (!ruleHits(v, it.rule, n)) continue
                 val m = parseTime(it.time) ?: continue
-                out += Occurrence(ch.id, ch.name, "t:${it.id}", it.emoji, it.label, n, m)
+                out += Occurrence(ch.id, label, "t:${it.id}", it.emoji, it.label, n, m)
             }
             for (cg in state.choiceGroups) {
                 if ("g:${cg.group}" in ch.off) continue
@@ -132,12 +154,12 @@ fun occurrences(state: CompanionState, fromDay: Int, toDay: Int): List<Occurrenc
                 val info = ChoiceInfo(cg, key, items, sel, explicit != null)
                 val emoji = items.first().emoji
                 when {
-                    sel == null -> out += Occurrence(ch.id, ch.name, "g:${cg.group}", emoji, cg.group, n, null, Kind.CHOICE_PENDING, info)
-                    sel == NONE -> out += Occurrence(ch.id, ch.name, "g:${cg.group}", emoji, cg.group, n, null, Kind.CHOICE_NONE, info)
+                    sel == null -> out += Occurrence(ch.id, label, "g:${cg.group}", emoji, cg.group, n, null, Kind.CHOICE_PENDING, info)
+                    sel == NONE -> out += Occurrence(ch.id, label, "g:${cg.group}", emoji, cg.group, n, null, Kind.CHOICE_NONE, info)
                     else -> {
                         val it = hits.firstOrNull { x -> x.id == sel } ?: continue
                         val m = parseTime(it.time) ?: continue
-                        out += Occurrence(ch.id, ch.name, "g:${cg.group}", it.emoji, it.label, n, m, Kind.TIMED, info)
+                        out += Occurrence(ch.id, label, "g:${cg.group}", it.emoji, it.label, n, m, Kind.TIMED, info)
                     }
                 }
             }
@@ -146,7 +168,7 @@ fun occurrences(state: CompanionState, fromDay: Int, toDay: Int): List<Occurrenc
                 val h = cycleHit(v, ev, n) ?: continue
                 if (h.start != n) continue
                 val m = parseTime(ev.startTime) ?: continue
-                out += Occurrence(ch.id, ch.name, "c:${ev.id}", ev.emoji, ev.name, n, m)
+                out += Occurrence(ch.id, label, "c:${ev.id}", ev.emoji, ev.name, n, m)
             }
         }
     }
@@ -204,7 +226,7 @@ fun dueBetween(state: CompanionState, afterMs: Long, uptoMs: Long): List<Due> {
                 if (state.picks[ch.id]?.containsKey(key) == true) continue
                 val fire = n * DAY_MS + s.promptMin * MIN_MS
                 if (fire <= afterMs || fire > uptoMs) continue
-                out += Due.Prompt("p|${ch.id}|$key|$n", fire, ch.id, ch.name, cg, key, items, ch.usual[cg.group])
+                out += Due.Prompt("p|${ch.id}|$key|$n", fire, ch.id, charLabel(state, ch), cg, key, items, ch.usual[cg.group])
             }
         }
     }
@@ -247,5 +269,5 @@ fun dayEvents(v: View, n: Int): List<DayEvent> {
 fun dayEventLabel(e: DayEvent): String {
     val d = if (e.maxDay > 0) minOf(e.dayIdx, e.maxDay) else e.dayIdx
     val tail = if (e.len > 1) " (day $d/${e.len})" else ""
-    return (if (e.emoji.isBlank()) "" else e.emoji.trim() + " ") + e.name + tail
+    return withEmoji(e.emoji, e.name + tail)
 }

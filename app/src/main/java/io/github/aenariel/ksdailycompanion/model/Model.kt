@@ -71,7 +71,29 @@ data class Character(
     val off: Set<String> = emptySet(),
     /** Usual item per choice group (group -> item id, or "none"). */
     val usual: Map<String, String> = emptyMap(),
+    /** ARGB colour shown on the agenda and notifications; 0 = not set yet. */
+    val color: Int = 0,
 )
+
+/** Character colours, distinct on dark and light backgrounds. */
+val PALETTE: List<Int> = listOf(
+    0xFFE57373, 0xFF64B5F6, 0xFF81C784, 0xFFFFD54F, 0xFFBA68C8,
+    0xFF4DD0E1, 0xFFFF8A65, 0xFFF06292, 0xFFA1887F, 0xFF90A4AE,
+).map { it.toInt() }
+
+/** First palette colour not used by another character (cycles when all are taken). */
+fun nextColor(chars: List<Character>): Int {
+    val used = chars.map { it.color }.toSet()
+    return PALETTE.firstOrNull { it !in used } ?: PALETTE[chars.size % PALETTE.size]
+}
+
+/** Gives a colour to characters saved before colours existed. */
+fun withColors(s: CompanionState): CompanionState {
+    if (s.characters.none { it.color == 0 }) return s
+    val out = ArrayList<Character>()
+    for (c in s.characters) out += if (c.color != 0) c else c.copy(color = nextColor(out + s.characters.filter { it.color != 0 }))
+    return s.copy(characters = out)
+}
 
 data class Settings(
     /** Minutes before the start. */
@@ -108,19 +130,30 @@ val DEFAULT_CHOICE_GROUPS = listOf(
     ChoiceGroup("Tri-Alliance Clash", "triclash", 3, 4),
 )
 
-/** Kingdom-specific events, as in the agenda's allDefaultEvents() (the shared ones come from events.json). */
+/**
+ * Kingdom-specific events, from the agenda's allDefaultEvents() (the shared ones come from events.json).
+ * Unlike the agenda, Mystic Divination does not replace the Fishing Tournament: Gen 4+ only turns
+ * Desert Trial into Champion's Way (and Mystic Divination starts switched on).
+ */
 fun defaultKingdom(variant: String): Kingdom {
     val old = variant == "old"
     return Kingdom(
         variant = if (old) "old" else "young",
         cycle = listOf(
-            CycleEvent("fishing", "🎣", "Fishing Tournament", 1, 3, 28, on = !old),
-            CycleEvent("desert", if (old) "🏆" else "🐺", if (old) "Champion's Way" else "Desert Trial", 2, 3, 14),
+            CycleEvent("fishing", "🎣", "Fishing Tournament", 1, 3, 28),
+            desertEvent(old, CycleEvent("desert", "", "", 2, 3, 14)),
             CycleEvent("divination", "🔮", "Mystic Divination", 4, 2, 28, on = old),
             CycleEvent("cesares", "👹", "Cesares Fury", 12, 3, 28),
         ),
     )
 }
+
+private fun desertEvent(old: Boolean, e: CycleEvent) =
+    e.copy(emoji = if (old) "🏆" else "🐺", name = if (old) "Champion's Way" else "Desert Trial")
+
+/** Gen 4+ switch: renames Desert Trial / Champion's Way and keeps every date and on/off as they are. */
+fun withVariant(k: Kingdom, old: Boolean): Kingdom =
+    k.copy(variant = if (old) "old" else "young", cycle = k.cycle.map { if (it.id == "desert") desertEvent(old, it) else it })
 
 fun defaultLegionTimes(): List<TimedItem> = listOf(
     TimedItem("sl-l1", true, "🏯", "Swordland (Legion 1)", "0 UTC", "Swordland Showdown", Rule("event", ev = "swordland", from = 7, to = 7)),

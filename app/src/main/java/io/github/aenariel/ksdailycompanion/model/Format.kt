@@ -59,3 +59,26 @@ fun fmtBoth(ms: Long, zone: ZoneId): String = fmtUtc(ms) + " · " + fmtLocal(ms,
 fun dayLabel(n: Int): String = DAY_LABEL.format(java.time.LocalDate.ofEpochDay(n.toLong()))
 
 fun newId(): String = java.util.UUID.randomUUID().toString().substring(0, 8)
+
+/**
+ * Kingshot draws some icons from private-use characters that only the game can show
+ * (see keyboarding.wiki/unicode/kingshot). The app shows an emoji instead; the stored text keeps
+ * the game character, so text copied to the game is unchanged. Unknown ones are dropped.
+ */
+val GAME_GLYPHS: Map<Char, String> = mapOf(
+    '\uE044' to "⚔️",   // Alliance Brawl
+    '\uE041' to "🪓",   // Viking token
+    '\uE009' to "🎡",   // Wheel coin (Hero Roulette)
+    '\uE010' to "🛡️",   // Truegold (Armament Competition)
+    '\uE001' to "💎",   // Gem (Buccaneer Bounty)
+)
+
+fun displayEmoji(s: String): String {
+    if (s.none { it in '\uE000'..'\uF8FF' }) return s
+    val b = StringBuilder()
+    for (c in s) if (c in '\uE000'..'\uF8FF') GAME_GLYPHS[c]?.let { b.append(it) } else b.append(c)
+    return b.toString().replace(Regex("\\s+"), " ").trim()
+}
+
+/** Emoji + name for display, without empty gaps. */
+fun withEmoji(emoji: String, text: String): String = listOf(displayEmoji(emoji).trim(), text).filter { it.isNotEmpty() }.joinToString(" ")

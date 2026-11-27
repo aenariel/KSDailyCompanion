@@ -4,6 +4,7 @@ import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -39,6 +41,7 @@ fun AgendaScreen(model: AppModel, modifier: Modifier, onSetup: () -> Unit) {
     val shown = s.copy(characters = s.characters.filter { who == ALL || it.id == who })
     val occ = remember(shown, today) { occurrences(shown, today, today + 6) }
     val kingdoms = shown.characters.filter { it.on }.mapNotNull { s.alliances[it.alliance]?.kingdom }.distinct()
+    val colors = s.characters.associate { it.id to it.color }
 
     LazyColumn(modifier.fillMaxSize().padding(horizontal = 12.dp)) {
         item {
@@ -55,12 +58,12 @@ fun AgendaScreen(model: AppModel, modifier: Modifier, onSetup: () -> Unit) {
             if (s.characters.isEmpty()) Card(Modifier.fillMaxWidth().padding(top = 8.dp)) {
                 Column(Modifier.padding(12.dp)) {
                     Text("No characters yet.")
-                    Hint("Add your characters and pick their alliance. Set the alliance's Bear Trap and legion times under Events.")
+                    Hint("Add your characters and pick their alliance. Set the alliance's Bear Trap and legion times under Alliances.")
                     TextButton(onClick = onSetup) { Text("Add a character") }
                 }
             } else if (s.characters.size > 1) {
                 Spacer(Modifier.height(8.dp))
-                Picker("Showing", who, listOf(ALL to "All characters") + s.characters.map { it.id to it.name }) { who = it }
+                Picker("Showing", who, listOf(ALL to "All characters") + s.characters.map { it.id to charLabel(s, it) }) { who = it }
             }
         }
         for (n in today..today + 6) {
@@ -69,13 +72,15 @@ fun AgendaScreen(model: AppModel, modifier: Modifier, onSetup: () -> Unit) {
                 Text((if (n == today) "Today · " else if (n == today + 1) "Tomorrow · " else "") + dayLabel(n),
                     style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 16.dp, bottom = 2.dp))
                 for (k in kingdoms) {
-                    val ev = dayEvents(viewFor(s, k), n).map { dayEventLabel(it) }
-                    if (ev.isNotEmpty()) Hint((if (kingdoms.size > 1) "$k: " else "") + ev.joinToString(" · "))
+                    val ev = dayEvents(viewFor(s, k), n)
+                    if (ev.isEmpty()) continue
+                    if (kingdoms.size > 1) Text(kingdomTag(k), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 4.dp))
+                    for (e in ev) Hint(dayEventLabel(e), Modifier.padding(start = 8.dp))
                 }
                 if (rows.isEmpty()) Hint("Nothing with a time.", Modifier.padding(top = 4.dp))
             }
             items(rows, key = { "${it.charId}|${it.key}|${it.day}|${it.minute}|${it.title}" }) { o ->
-                OccurrenceRow(o, now, zone, multi = s.characters.size > 1) { choosing = o }
+                OccurrenceRow(o, colors[o.charId] ?: 0, now, zone, multi = s.characters.size > 1) { choosing = o }
             }
         }
         item { Spacer(Modifier.height(24.dp)) }
@@ -85,28 +90,31 @@ fun AgendaScreen(model: AppModel, modifier: Modifier, onSetup: () -> Unit) {
 }
 
 @Composable
-private fun OccurrenceRow(o: Occurrence, now: Long, zone: ZoneId, multi: Boolean, onChoose: () -> Unit) {
+private fun OccurrenceRow(o: Occurrence, color: Int, now: Long, zone: ZoneId, multi: Boolean, onChoose: () -> Unit) {
     val past = o.minute != null && o.atMs < now
     val clickable = o.choice != null
     Card(Modifier.fillMaxWidth().padding(vertical = 3.dp).alpha(if (past) 0.5f else 1f).let { if (clickable) it.clickable(onClick = onChoose) else it }) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.width(96.dp)) {
-                if (o.minute != null) {
-                    Text(fmtUtc(o.atMs), fontWeight = FontWeight.SemiBold)
-                    Hint(fmtLocal(o.atMs, zone))
-                } else Text("—")
-            }
-            Column(Modifier.weight(1f)) {
-                Text(listOf(o.emoji.trim(), o.title).filter { it.isNotEmpty() }.joinToString(" "))
-                val sub = buildList {
-                    if (multi) add(o.charName)
-                    when (o.kind) {
-                        Kind.CHOICE_PENDING -> add("legion not set — tap to choose")
-                        Kind.CHOICE_NONE -> add("not playing — tap to change")
-                        Kind.TIMED -> if (o.choice != null) add(if (o.choice.explicit) "tap to change" else "usual legion — tap to change")
-                    }
+        Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.width(6.dp).fillMaxHeight().background(if (color != 0) Color(color) else Color.Transparent))
+            Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.width(96.dp)) {
+                    if (o.minute != null) {
+                        Text(fmtUtc(o.atMs), fontWeight = FontWeight.SemiBold)
+                        Hint(fmtLocal(o.atMs, zone))
+                    } else Text("—")
                 }
-                if (sub.isNotEmpty()) Hint(sub.joinToString(" · "))
+                Column(Modifier.weight(1f)) {
+                    Text(withEmoji(o.emoji, o.title))
+                    val sub = buildList {
+                        if (multi) add(o.charName)
+                        when (o.kind) {
+                            Kind.CHOICE_PENDING -> add("legion not set — tap to choose")
+                            Kind.CHOICE_NONE -> add("not playing — tap to change")
+                            Kind.TIMED -> if (o.choice != null) add(if (o.choice.explicit) "tap to change" else "usual legion — tap to change")
+                        }
+                    }
+                    if (sub.isNotEmpty()) Hint(sub.joinToString(" · "))
+                }
             }
         }
     }
@@ -128,9 +136,13 @@ private fun LegionDialog(model: AppModel, o: Occurrence, onClose: () -> Unit) {
     val now = model.now
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text("${o.charName} · ${c.group.group}") },
+        title = { Text(c.group.group) },
         text = {
             Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (ch != null) ColorDot(ch.color)
+                    Text(" " + o.charName, fontWeight = FontWeight.SemiBold)
+                }
                 Hint("Week of ${c.occKey.substringAfterLast('@')}. Pick the legion you registered in.")
                 Spacer(Modifier.height(8.dp))
                 for (it in c.options) {

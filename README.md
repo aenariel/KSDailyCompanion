@@ -8,8 +8,18 @@ with reminder times you choose (e.g. 12 h and 2 h before). Everything stays on t
   (notification buttons *Legion 1 / Legion 2 / Not playing*), then reminds you before that legion's battle.
   A "usual legion" per character covers the weeks you don't answer.
 - **Times are UTC** (game time), always shown with your local time next to them.
-- **Alliance times** (Bear Traps, legion hours…) are edited under *Events*, per alliance.
+- **Alliances** (3-character tags) hold the times: legion hours, Bear Traps…
+- **Kingdoms** (#number) hold the dates of their own rotating events (Fishing, Desert Trial / Champion's Way,
+  Mystic Divination, Cesares Fury…) and one-off events; every alliance in the kingdom follows them.
+- Each character shows as `Name (Tag, #kingdom)` with its own colour. Game-only icons (private-use characters)
+  are shown as emoji in the app.
 - Optional **daily summary** notification with the day's events.
+
+## Install
+
+[**Add to Obtainium**](http://apps.obtainium.imranr.dev/redirect.html?r=obtainium://add/https://github.com/aenariel/KSDailyCompanion)
+(installs from the GitHub releases and keeps the app updated), or download the APK from the latest
+[release](https://github.com/aenariel/KSDailyCompanion/releases/latest).
 
 ## Shared data with KSDailyAgenda
 
@@ -49,5 +59,5 @@ app/src/main/java/io/github/aenariel/ksdailycompanion/
   model/   Model.kt (data), Engine.kt (rules, planning), Format.kt (leads, UTC/local)
   data/    Codec.kt (JSON, agenda import), Store.kt (state file, events fetch), Log.kt
   notify/  Scheduler.kt (alarm + receivers), Notifier.kt (notifications)
-  ui/      MainActivity.kt, AgendaScreen, CharactersScreen, EventsScreen, SettingsScreen, Widgets
+  ui/      MainActivity.kt, AgendaScreen, CharactersScreen, AlliancesScreen, KingdomsScreen, SettingsScreen, Widgets
 ```

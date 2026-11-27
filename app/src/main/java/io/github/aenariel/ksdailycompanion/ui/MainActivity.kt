@@ -83,7 +83,7 @@ class MainActivity : ComponentActivity() {
 }
 
 private enum class Tab(val icon: String, val label: String) {
-    AGENDA("📅", "Agenda"), CHARACTERS("🧑", "Characters"), EVENTS("🏯", "Events"), SETTINGS("⚙️", "Settings")
+    AGENDA("📅", "Agenda"), CHARACTERS("🧑", "Characters"), ALLIANCES("🛡️", "Alliances"), KINGDOMS("🏰", "Kingdoms"), SETTINGS("⚙️", "Settings")
 }
 
 @Composable
@@ -99,7 +99,7 @@ private fun App(model: AppModel) {
             NavigationBar {
                 for (t in Tab.entries) NavigationBarItem(
                     selected = tab == t, onClick = { tab = t },
-                    icon = { Text(t.icon) }, label = { Text(t.label) },
+                    icon = { Text(t.icon) }, label = { Text(t.label, maxLines = 1, style = MaterialTheme.typography.labelSmall) },
                 )
             }
         },
@@ -108,7 +108,8 @@ private fun App(model: AppModel) {
         when (tab) {
             Tab.AGENDA -> AgendaScreen(model, m, onSetup = { tab = Tab.CHARACTERS })
             Tab.CHARACTERS -> CharactersScreen(model, m)
-            Tab.EVENTS -> EventsScreen(model, m)
+            Tab.ALLIANCES -> AlliancesScreen(model, m)
+            Tab.KINGDOMS -> KingdomsScreen(model, m)
             Tab.SETTINGS -> SettingsScreen(model, m)
         }
     }

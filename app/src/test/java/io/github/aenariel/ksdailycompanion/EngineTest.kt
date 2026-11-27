@@ -97,7 +97,7 @@ class EngineTest {
             .filterIsInstance<Due.Reminder>().filter { it.occ.key == "t:trap1" }
         // Trap 1 at 20 UTC on the 28th: 12h before (08:00) and 2h before (18:00), one reminder for both characters
         assertEquals(listOf(ms("2026-11-28", "08:00"), ms("2026-11-28", "18:00")), traps.map { it.fireAt })
-        assertEquals(listOf("A", "B"), traps.first().charNames)
+        assertEquals(listOf("A (My alliance, My kingdom)", "B (My alliance, My kingdom)"), traps.first().charNames)
         // Castle Battle (day 13 of the cycle = 2026-11-21, 12 UTC) has a start time, so it is reminded too
         val castle = occurrences(st, d("2026-11-21"), d("2026-11-21")).filter { it.key == "c:castle" }
         assertEquals(2, castle.size)
@@ -118,5 +118,37 @@ class EngineTest {
         assertEquals("Thu 26/11", dayLabel(d("2026-11-26")))
         val labels = dayEvents(view, d("2026-11-15")).map { dayEventLabel(it) }
         assertEquals(listOf("🌟 Alliance Brawl (day 6/7)", "✨ Fantasy Theater (day 7/7)"), labels)
+    }
+
+    @Test fun labelsColorsAndGlyphs() {
+        assertEquals("#1130", kingdomTag("1130"))
+        assertEquals("#1130", kingdomTag("#1130"))
+        val st = base.copy(
+            alliances = mapOf("Ffs" to defaultAlliance("1130")),
+            kingdoms = mapOf("1130" to defaultKingdom("old")),
+            characters = listOf(Character("a", "Pingu", "Ffs"), Character("b", "Pingu", "Ffs", color = PALETTE[0])),
+        )
+        assertEquals("Pingu (Ffs, #1130)", charLabel(st, st.characters[0]))
+        val colored = withColors(st)
+        assertEquals(listOf(PALETTE[1], PALETTE[0]), colored.characters.map { it.color })
+        assertEquals("🌟 ⚔️", displayEmoji("🌟 \uE044"))
+        assertEquals("🛡️ Armament Competition", withEmoji("\uE010", "Armament Competition"))
+        assertEquals("Odd", withEmoji("\uE0FF", "Odd"))
+    }
+
+    @Test fun kingdomVariantAndDates() {
+        val old = defaultKingdom("old")
+        assertTrue(old.cycle.first { it.id == "fishing" }.on)          // Gen 4+ keeps the Fishing Tournament
+        assertTrue(old.cycle.first { it.id == "divination" }.on)
+        assertEquals("Champion's Way", old.cycle.first { it.id == "desert" }.name)
+        val moved = old.copy(cycle = old.cycle.map { if (it.id == "desert") it.copy(start = 5) else it })
+        val young = withVariant(moved, false)
+        assertEquals("Desert Trial", young.cycle.first { it.id == "desert" }.name)
+        assertEquals(5, young.cycle.first { it.id == "desert" }.start)   // dates survive the switch
+        // "Desert Trial started on 2026-11-25" -> offset 2 in a 14-day cycle from 2026-11-09
+        assertEquals(2, startFromDate(view, d("2026-11-25"), 14))
+        val desert = viewFor(base, "My kingdom").event("desert")!!
+        assertEquals(d("2026-11-25"), currentOrNext(view, desert, d("2026-11-27")).start)
+        assertEquals(d("2026-12-09"), currentOrNext(view, desert, d("2026-11-28")).start)
     }
 }
