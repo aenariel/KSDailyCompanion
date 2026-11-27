@@ -118,12 +118,7 @@ private fun App(model: AppModel) {
     Scaffold(
         snackbarHost = { SnackbarHost(snack) },
         bottomBar = {
-            NavigationBar {
-                for (t in Tab.entries) NavigationBarItem(
-                    selected = tab == t, onClick = { tab = t },
-                    icon = { Text(t.icon) }, label = { Text(t.label, maxLines = 1, style = MaterialTheme.typography.labelSmall) },
-                )
-            }
+            AppNavBar(tab) { tab = it }
         },
     ) { pad ->
         val m = Modifier.padding(pad)
@@ -134,5 +129,19 @@ private fun App(model: AppModel) {
             Tab.KINGDOMS -> KingdomsScreen(model, m)
             Tab.SETTINGS -> SettingsScreen(model, m)
         }
+    }
+}
+
+/** Bottom tabs. When the labels would not fit (narrow screen or large text) only the open tab shows its name. */
+@Composable
+internal fun AppNavBar(tab: Tab, onTab: (Tab) -> Unit) {
+    val cfg = androidx.compose.ui.platform.LocalConfiguration.current
+    val fontScale = androidx.compose.ui.platform.LocalDensity.current.fontScale
+    val roomy = cfg.screenWidthDp / fontScale >= 400f
+    NavigationBar {
+        for (t in Tab.entries) NavigationBarItem(
+            selected = tab == t, onClick = { onTab(t) }, alwaysShowLabel = roomy,
+            icon = { Text(t.icon) }, label = { Text(t.label, maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall) },
+        )
     }
 }

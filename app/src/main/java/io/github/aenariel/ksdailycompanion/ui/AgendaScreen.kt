@@ -116,7 +116,7 @@ fun AgendaScreen(model: AppModel, modifier: Modifier, onGo: (Tab) -> Unit) {
 
 /** Small accent label inside a day card: GLOBAL, #1130, TIMES. */
 @Composable
-private fun GroupLabel(text: String) {
+internal fun GroupLabel(text: String) {
     Text(text.uppercase(), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
 }
@@ -124,9 +124,10 @@ private fun GroupLabel(text: String) {
 /** Halfway between the row colour and a highlight colour: marks without shouting. */
 private fun soft(base: Color, tint: Color): Color = androidx.compose.ui.graphics.lerp(base, tint, 0.5f)
 
-/** An event without a time: same layout as the time rows. Last day and one-day events use the accent; KvK the second accent. */
+/** An event without a time: same layout as the time rows. Last day and one-day events use the accent; KvK the second accent.
+ *  With little room (narrow screen or large text) the status goes on its own line above the name. */
 @Composable
-private fun EventRow(e: DayEvent) {
+internal fun EventRow(e: DayEvent) {
     val marked = eventMarked(e)
     val hl = kvkHighlight()
     // Marked events: a softened background, no bar (the bar is the characters' colour on scheduled rows)
@@ -134,24 +135,32 @@ private fun EventRow(e: DayEvent) {
     val bg = when { e.highlight -> soft(base, hl.container); marked -> soft(base, MaterialTheme.colorScheme.primaryContainer); else -> base }
     val fg = when { e.highlight -> hl.onContainer; marked -> MaterialTheme.colorScheme.onPrimaryContainer; else -> MaterialTheme.colorScheme.onSurface }
     val note = eventEndNote(e)
+    @Composable fun status() = Text(eventStatus(e), style = MaterialTheme.typography.labelLarge,
+        fontWeight = if (marked) FontWeight.Bold else FontWeight.Normal, color = if (marked || e.highlight) fg else MaterialTheme.colorScheme.onSurfaceVariant)
+    @Composable fun name(m: Modifier) = Text(withEmoji(e.emoji, e.name), modifier = m, color = fg,
+        fontWeight = if (marked || e.highlight) FontWeight.SemiBold else FontWeight.Normal)
     Surface(Modifier.fillMaxWidth().padding(vertical = 2.dp), shape = RoundedCornerShape(8.dp), color = bg) {
-        Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(6.dp).fillMaxHeight())
-            Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        BoxWithConstraints {
+            val compact = isCompact(maxWidth)
+            if (compact) Column(Modifier.padding(start = 18.dp, end = 12.dp, top = 8.dp, bottom = 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    status()
+                    if (note != null) Text(" · $note", style = MaterialTheme.typography.bodySmall, color = fg)
+                }
+                name(Modifier)
+            } else Row(Modifier.padding(start = 18.dp, end = 12.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.width(96.dp)) {
-                    Text(eventStatus(e), style = MaterialTheme.typography.labelLarge, fontWeight = if (marked) FontWeight.Bold else FontWeight.Normal,
-                        color = if (marked || e.highlight) fg else MaterialTheme.colorScheme.onSurfaceVariant)
+                    status()
                     if (note != null) Text(note, style = MaterialTheme.typography.bodySmall, color = fg)
                 }
-                Text(withEmoji(e.emoji, e.name), modifier = Modifier.weight(1f), color = fg,
-                    fontWeight = if (marked || e.highlight) FontWeight.SemiBold else FontWeight.Normal)
+                name(Modifier.weight(1f))
             }
         }
     }
 }
 
 /** Same thing for several characters of one alliance in one row; legion and Eternity picks stay per character. */
-private fun mergeRows(rows: List<Occurrence>, byId: Map<String, Character>): List<Pair<Occurrence, List<Character>>> {
+internal fun mergeRows(rows: List<Occurrence>, byId: Map<String, Character>): List<Pair<Occurrence, List<Character>>> {
     val out = LinkedHashMap<String, Pair<Occurrence, MutableList<Character>>>()
     for (o in rows) {
         val personal = o.choice != null || o.solo != null
@@ -162,25 +171,29 @@ private fun mergeRows(rows: List<Occurrence>, byId: Map<String, Character>): Lis
     return out.values.toList()
 }
 
-/** Mystic Trials: a small table with thin lines, troop ratios in columns. */
+/** Mystic Trials: a small table with thin lines, troop ratios in columns (short headings when there is little room). */
 @Composable
-private fun TrialsTable(trials: List<Trial>) {
+internal fun TrialsTable(trials: List<Trial>) {
     val line = MaterialTheme.colorScheme.outlineVariant
-    val heads = listOf("Infantry", "Cavalry", "Archers")
-    Column(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 4.dp)
-        .border(androidx.compose.foundation.BorderStroke(0.5.dp, line), RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp))) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp)) {
-            Spacer(Modifier.weight(2f))
-            for (h in heads) Text(h, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-        }
-        for (t in trials) {
-            HorizontalDivider(thickness = 0.5.dp, color = line)
-            val parts = t.ratio.split('/').map { it.trim() }
-            Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(withEmoji(t.emoji, t.name), Modifier.weight(2f), style = MaterialTheme.typography.bodyMedium)
-                for (i in 0..2) Text(parts.getOrNull(i) ?: "", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+    BoxWithConstraints {
+        val compact = isCompact(maxWidth)
+        val heads = if (compact) listOf("Inf.", "Cav.", "Arch.") else listOf("Infantry", "Cavalry", "Archers")
+        val nameW = if (compact) 2.2f else 2.6f
+        Column(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 4.dp)
+            .border(androidx.compose.foundation.BorderStroke(0.5.dp, line), RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp))) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp)) {
+                Spacer(Modifier.weight(nameW))
+                for (h in heads) Text(h, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 1)
+            }
+            for (t in trials) {
+                HorizontalDivider(thickness = 0.5.dp, color = line)
+                val parts = t.ratio.split('/').map { it.trim() }
+                Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(withEmoji(t.emoji, t.name), Modifier.weight(nameW), style = MaterialTheme.typography.bodyMedium)
+                    for (i in 0..2) Text(parts.getOrNull(i) ?: "", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 1)
+                }
             }
         }
     }
@@ -267,11 +280,27 @@ private fun BattleDialog(model: AppModel, alliance: String, day: Int, onClose: (
     )
 }
 
+/** A row with a time. Alliance and kingdom sit small in the top-right corner. With little room (narrow screen or
+ *  large text) it stacks: time and alliance, then the title, then the characters and the button. */
 @Composable
-private fun OccurrenceRow(o: Occurrence, chars: List<Character>, now: Long, zone: ZoneId, onChoose: () -> Unit) {
+internal fun OccurrenceRow(o: Occurrence, chars: List<Character>, now: Long, zone: ZoneId, onChoose: () -> Unit) {
     val past = o.minute != null && o.atMs < now
     val clickable = o.choice != null || o.solo != null || o.key == BATTLE_KEY
     val hl = kvkHighlight()
+    val status = when (o.kind) {
+        Kind.CHOICE_PENDING -> if (o.solo != null) "time not set" else "legion not set"
+        Kind.CHOICE_NONE -> "not playing"
+        Kind.BATTLE_TBD -> "time TBD"
+        Kind.TIMED -> if (o.choice != null && !o.choice.explicit) "usual legion"
+            else if (o.solo != null && !o.solo.explicit) "usual time" else null
+    }
+    val chip = if (!clickable) null else when (o.kind) {
+        Kind.CHOICE_PENDING -> if (o.solo != null) "✏️ Set time" else "✏️ Choose"
+        Kind.BATTLE_TBD -> "✏️ Set time"
+        else -> "✏️"
+    }
+    @Composable fun where() { if (o.where.isNotEmpty()) Text(o.where, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
+    @Composable fun title(m: Modifier) = Text(withEmoji(o.emoji, o.title), m)
     Surface(Modifier.fillMaxWidth().padding(vertical = 3.dp).alpha(if (past) 0.5f else 1f).clip(RoundedCornerShape(8.dp))
         .let { if (clickable) it.clickable(onClick = onChoose) else it },
         shape = RoundedCornerShape(8.dp), color = if (o.highlight) soft(MaterialTheme.colorScheme.surfaceContainerHigh, hl.container) else MaterialTheme.colorScheme.surfaceContainerHigh) {
@@ -280,31 +309,40 @@ private fun OccurrenceRow(o: Occurrence, chars: List<Character>, now: Long, zone
             Column(Modifier.width(6.dp).fillMaxHeight()) {
                 for (c in chars) Box(Modifier.weight(1f).fillMaxWidth().background(if (c.color != 0) Color(c.color) else Color.Transparent))
             }
-            Row(Modifier.padding(start = 12.dp, end = 10.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.width(96.dp)) {
-                    if (o.minute != null) {
-                        Text(fmtUtc(o.atMs), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                        Hint(fmtLocal(o.atMs, zone))
-                    } else Text(if (o.kind == Kind.BATTLE_TBD) "TBD" else "—", style = MaterialTheme.typography.labelLarge)
-                }
-                Column(Modifier.weight(1f)) {
-                    Text(withEmoji(o.emoji, o.title) + if (o.where.isNotEmpty()) " (${o.where})" else "")
-                    val status = when (o.kind) {
-                        Kind.CHOICE_PENDING -> if (o.solo != null) "time not set" else "legion not set"
-                        Kind.CHOICE_NONE -> "not playing"
-                        Kind.BATTLE_TBD -> "time TBD"
-                        Kind.TIMED -> if (o.choice != null && !o.choice.explicit) "usual legion"
-                            else if (o.solo != null && !o.solo.explicit) "usual time" else null
+            BoxWithConstraints(Modifier.weight(1f)) {
+                if (isCompact(maxWidth)) Column(Modifier.padding(start = 12.dp, end = 10.dp, top = 8.dp, bottom = 8.dp)) {
+                    Row(verticalAlignment = Alignment.Top) {
+                        Column(Modifier.weight(1f)) {
+                            if (o.minute != null) {
+                                Text(fmtUtc(o.atMs), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                                Hint(fmtLocal(o.atMs, zone))
+                            } else Text(if (o.kind == Kind.BATTLE_TBD) "TBD" else "—", style = MaterialTheme.typography.labelLarge)
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        where()
                     }
+                    title(Modifier.padding(top = 4.dp))
                     CharDots(chars, Modifier.padding(top = 2.dp), status)
-                }
-                if (clickable) {
-                    Spacer(Modifier.width(6.dp))
-                    RowChip(when (o.kind) {
-                        Kind.CHOICE_PENDING -> if (o.solo != null) "✏️ Set time" else "✏️ Choose"
-                        Kind.BATTLE_TBD -> "✏️ Set time"
-                        else -> "✏️"
-                    })
+                    if (chip != null) Box(Modifier.fillMaxWidth().padding(top = 6.dp), contentAlignment = Alignment.CenterEnd) { RowChip(chip) }
+                } else Row(Modifier.padding(start = 12.dp, end = 10.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.width(96.dp)) {
+                        if (o.minute != null) {
+                            Text(fmtUtc(o.atMs), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                            Hint(fmtLocal(o.atMs, zone))
+                        } else Text(if (o.kind == Kind.BATTLE_TBD) "TBD" else "—", style = MaterialTheme.typography.labelLarge)
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.Top) {
+                            title(Modifier.weight(1f))
+                            Spacer(Modifier.width(6.dp))
+                            where()
+                        }
+                        CharDots(chars, Modifier.padding(top = 2.dp), status)
+                    }
+                    if (chip != null) {
+                        Spacer(Modifier.width(6.dp))
+                        RowChip(chip)
+                    }
                 }
             }
         }

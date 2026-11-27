@@ -29,6 +29,15 @@ fun Hint(text: String, modifier: Modifier = Modifier) {
     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = modifier)
 }
 
+/** Width a row needs, in dp at normal text size, to keep things side by side. Large text needs proportionally more,
+ *  so the check divides by the font scale: a 360 dp row with 1.3x text counts as 277 dp. */
+const val SIDE_BY_SIDE_DP = 330f
+
+/** True when a row this wide should stack its parts (narrow screen or large text). */
+@Composable
+fun isCompact(width: androidx.compose.ui.unit.Dp): Boolean =
+    width.value / androidx.compose.ui.platform.LocalDensity.current.fontScale < SIDE_BY_SIDE_DP
+
 /** Title of a tab, with its icon, an optional line of instructions and room before the cards. */
 @Composable
 fun ScreenHeader(tab: Tab, title: String = tab.label, hint: String? = null) {
@@ -57,15 +66,16 @@ fun RowChip(text: String) {
 }
 
 /** "● Pingu  ● Mara": character names with their colour. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CharDots(chars: List<Character>, modifier: Modifier = Modifier, suffix: String? = null) {
-    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        for ((i, c) in chars.withIndex()) {
-            if (i > 0) Spacer(Modifier.width(10.dp))
+    // each name stays whole; names and the status wrap to the next line as units
+    FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        for (c in chars) Row(verticalAlignment = Alignment.CenterVertically) {
             ColorDot(c.color, 9)
-            Text(" " + c.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(" " + c.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, softWrap = false)
         }
-        if (suffix != null) Hint((if (chars.isEmpty()) "" else " · ") + suffix)
+        if (suffix != null) Hint(suffix)
     }
 }
 
@@ -242,12 +252,21 @@ fun ErrorText(msg: String?) {
 /** Label on the left, value on the right; the whole row is tappable. */
 @Composable
 fun ValueRow(label: String, value: String, sub: String? = null, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
+    // the value goes under the label when both don't fit side by side (long value, narrow screen or large text)
+    BoxWithConstraints(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 8.dp)) {
+        val stacked = isCompact(maxWidth) || value.length > 14
+        if (stacked) Column {
             Text(label)
             if (sub != null) Hint(sub)
+            Text(value, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 2.dp))
+        } else Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(label)
+                if (sub != null) Hint(sub)
+            }
+            Spacer(Modifier.width(12.dp))
+            Text(value, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
         }
-        Text(value, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
     }
 }
 

@@ -238,14 +238,23 @@ private fun TrapDaysDialog(start: Rule, today: Int, onSave: (Rule) -> Unit, onCl
 
 @Composable
 private fun ItemRow(t: TimedItem, v: View, now: Long, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
+    BoxWithConstraints(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 8.dp)) {
+        @Composable fun info() {
             Text(withEmoji(t.emoji, t.label) + if (t.on) "" else " (off)")
             Hint(ruleSummary(t.rule, v) + if (t.group.isNotBlank()) " · ${t.group}" else "")
         }
-        Column(horizontalAlignment = Alignment.End) {
-            Text(normTime(t.time) ?: t.time, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-            Hint(timePreview(t.time, now).substringAfter(" · "))
+        val time = normTime(t.time) ?: t.time
+        val local = timePreview(t.time, now).substringAfter(" · ")
+        if (isCompact(maxWidth)) Column {
+            info()
+            Text("$time · $local", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 2.dp))
+        } else Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) { info() }
+            Spacer(Modifier.width(12.dp))
+            Column(horizontalAlignment = Alignment.End) {
+                Text(time, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                Hint(local)
+            }
         }
     }
 }

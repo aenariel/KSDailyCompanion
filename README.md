@@ -63,7 +63,14 @@ Signing secrets (repository → Settings → Secrets and variables → Actions):
 Without them the APK is signed with a throwaway debug key. Keep the keystore safe: a different key cannot update
 an installed app.
 
-Locally: `./gradlew testDebugUnitTest assembleRelease` (Android SDK required).
+Locally: `./gradlew recordPaparazziDebug assembleRelease` (Android SDK required).
+
+Test builds (pushes) are named after the next patch of the latest release, e.g. `0.2.1-dev.15`, so Obtainium never
+mistakes them for a release; releases take the tag's version (`v0.2.0` -> `0.2.0`).
+
+Layout snapshots: `LayoutSnapshotTest` (Paparazzi, no emulator) renders the agenda rows, the settings rows and the tab bar
+on a 360 dp phone at 1x, 1.3x and 2x text and on a 411 dp phone. CI uploads them as the `layout-snapshots` artifact.
+Rows switch to a stacked layout when `width / fontScale < 330 dp` (`isCompact` in `Widgets.kt`).
 
 ## Layout
 

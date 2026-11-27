@@ -17,6 +17,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # tags, for the test-build version name
 
       - uses: actions/setup-java@v4
         with:
@@ -27,8 +29,14 @@ jobs:
 
       - name: Version
         run: |
-          # v0.1.0 -> 0.1.0; a stray dot (v.0.1.0) is dropped too
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then V="${GITHUB_REF_NAME#v}"; V="${V#.}"; else V="0.1.${GITHUB_RUN_NUMBER}"; fi
+          # Releases: v0.2.0 -> 0.2.0 (a stray dot, v.0.2.0, is dropped too).
+          # Test builds: the next patch after the latest release tag, e.g. 0.2.1-dev.15, so Obtainium never takes them for a release.
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then V="${GITHUB_REF_NAME#v}"; V="${V#.}"
+          else
+            LAST=$(git tag --list 'v*' --sort=-v:refname | head -1); LAST="${LAST#v}"; LAST="${LAST#.}"; LAST="${LAST:-0.1.0}"
+            IFS=. read -r MA MI PA <<< "$LAST"; PA="${PA:-0}"; V="${MA}.${MI}.$(( ${PA%%[^0-9]*} + 1 ))-dev.${GITHUB_RUN_NUMBER}"
+            echo "Latest release tag: v$LAST"
+          fi
           echo "VERSION_NAME=$V" >> "$GITHUB_ENV"
           echo "VERSION_CODE=${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
           echo "Version $V (code ${GITHUB_RUN_NUMBER}) from $GITHUB_REF"
@@ -45,8 +53,17 @@ jobs:
             echo "::warning::Secret KS_KEYSTORE_BASE64 is missing: this APK is signed with a throwaway debug key and cannot update a release install."
           fi
 
-      - name: Unit tests
-        run: ./gradlew --no-daemon --console=plain testDebugUnitTest
+      - name: Unit tests and layout snapshots
+        # recordPaparazziDebug runs every debug unit test and writes the layout images (normal, 1.3x and 2x text)
+        run: ./gradlew --no-daemon --console=plain recordPaparazziDebug
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: layout-snapshots
+          path: app/src/test/snapshots/images/
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Build release APK
         env:

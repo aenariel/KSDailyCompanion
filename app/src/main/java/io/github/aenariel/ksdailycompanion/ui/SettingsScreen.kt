@@ -203,7 +203,8 @@ fun SettingsScreen(model: AppModel, modifier: Modifier) {
             Hint("Events file: ${st.eventsUrl}")
         }
 
-        Text("Made by Pingu 🐧 (#1130/#2116)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        val version = remember { try { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName } catch (e: Exception) { null } }
+        Text("KSCompanion v${version ?: "?"}\nMade by Pingu 🐧 (#1130/#2116)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 24.dp))
     }
 

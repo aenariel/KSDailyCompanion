@@ -4,6 +4,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("app.cash.paparazzi")
 }
 
 // Release signing comes from the CI secrets (see README). Without them the release build is signed with the debug key.
@@ -56,4 +57,14 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
     testImplementation("junit:junit:4.13.2")
+}
+
+// Paparazzi's layoutlib needs Guava's -jre variant (known issue in Paparazzi 1.3.x)
+dependencies.constraints {
+    add("testImplementation", "com.google.guava:guava") {
+        attributes {
+            attribute(TargetJvmEnvironment.TARGET_JVM_ENVIRONMENT_ATTRIBUTE, objects.named(TargetJvmEnvironment::class.java, TargetJvmEnvironment.STANDARD_JVM))
+        }
+        because("LayoutLib and sdk-common depend on Guava's -jre published variant.")
+    }
 }
