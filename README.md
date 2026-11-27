@@ -18,6 +18,12 @@ with reminder times you choose (e.g. 12 h and 2 h before). Everything stays on t
 - **Sanctuary & Fortress** battles every Friday: pick the alliance's hours among the voted slots (3, 9, 13, 14, 17 UTC)
   from the agenda; shown as "time TBD" until then.
 - **Agenda**: global events once, then each kingdom's own events, then the times; the last day of an event stands out.
+- **Eternity's Reach**: each character picks a slot (2, 5, 11, 14, 16, 18, 21 UTC); asked the day before, then reminded.
+- **Mystic Trials** of the day with their troop ratio (from the agenda's list).
+- From `events.json` (when published there): Mystic Trials, the possible hours of Eternity's Reach and of the
+  Friday battles, and the legion registration and battle days — see the KSDailyAgenda README.
+- Event options from `events.json`: `days` (which days of the event to show), `lastDay` (mark the last day),
+  `highlight` (KvK and Castle Battle stand out). Accent colour is set in Settings → Appearance (blue by default).
 - **Settings → Reset**: reset event formats (global list as published, kingdom events to their default format,
   dates kept) or erase all data.
 

@@ -15,7 +15,9 @@ class EngineTest {
             CycleEvent("swordland", "🏯", "Swordland Showdown", 0, 7, 14, on = false),
             CycleEvent("triclash", "🏤", "Tri-Alliance Clash", 14, 6, 28, on = false),
             CycleEvent("castle", "🌟 🏰", "Castle Battle", 12, 1, 28, startTime = "12 UTC"),
-            CycleEvent("vikings", "\uE041", "Viking Vengeance", 8, 3, 14),
+            CycleEvent("vikings", "\uE041", "Viking Vengeance", 8, 3, 14, days = listOf(1, 3)),
+            CycleEvent("kvkmatch", "🌟 🏰", "KvK: Matchmaking Phase", 19, 2, 28, lastDay = false, highlight = true),
+            CycleEvent("eternity", "🔅", "Eternity's Reach", 8, 1, 14),
         ),
         listOf(SpecialEvent("fantasy1", "✨", "Fantasy Theater", "2026-11-09", "2026-11-15")),
     )
@@ -167,11 +169,12 @@ class EngineTest {
         val st = base.copy(kingdoms = mapOf("1130" to defaultKingdom("old")), alliances = mapOf("Ffs" to defaultAlliance("1130")))
         val n = d("2026-11-15")                            // last day of Alliance Brawl (ends 12 UTC)
         val g = globalEvents(st, n)
-        assertEquals("ENDS 12:00 UTC", eventStatus(g.first { it.name == "Alliance Brawl" }))
-        assertEquals("day 7/7", eventStatus(g.first { it.name == "Fantasy Theater" }).let { if (it.startsWith("ENDS")) "day 7/7" else it })
-        assertEquals("ENDS TODAY", eventStatus(g.first { it.name == "Fantasy Theater" }))
+        val brawl = g.first { it.name == "Alliance Brawl" }
+        assertEquals("Last day", eventStatus(brawl))
+        assertEquals("ends 12:00 UTC", eventEndNote(brawl))
+        assertEquals("Last day", eventStatus(g.first { it.name == "Fantasy Theater" }))
         val desert = kingdomEvents(st, "1130", d("2026-11-27")).first { it.key == "c:desert" }
-        assertEquals("ENDS TODAY", eventStatus(desert))
+        assertEquals("Last day", eventStatus(desert))
         assertEquals("day 1/3", eventStatus(kingdomEvents(st, "1130", d("2026-11-25")).first { it.key == "c:desert" }))
         assertTrue(kingdomEvents(st, "1130", d("2026-11-27")).none { it.name == "Alliance Brawl" })   // globals only once
     }
@@ -211,5 +214,47 @@ class EngineTest {
         assertEquals("Champion's Way", reset.cycle.first { it.id == "desert" }.name)
         assertTrue(reset.cycle.any { it.id == "mine" })
         assertTrue(withVikings(base).alliances.values.all { a -> a.timed.count { it.group == VIKING_GROUP } == 2 })
+    }
+
+    @Test fun eventOptionsAndEternity() {
+        // Viking Vengeance shows on days 1 and 3 only; KvK Matchmaking has no last-day mark; one-day events say so
+        assertTrue(globalEvents(base, d("2026-11-18")).none { it.key == "c:vikings" })
+        assertEquals("day 3/3", eventStatus(globalEvents(base, d("2026-11-19")).first { it.key == "c:vikings" }).let { if (it == "Last day") "day 3/3" else it })
+        val km = globalEvents(base, d("2026-11-29")).first { it.key == "c:kvkmatch" }
+        assertEquals("day 2/2", eventStatus(km)); assertTrue(km.highlight)
+        assertEquals("Today only", eventStatus(globalEvents(base, d("2026-11-17")).first { it.key == "c:eternity" }))
+        // Eternity's Reach (2026-11-17): asked the day before at 12:00 UTC, then reminded at the picked slot
+        val ch = Character("a", "Pingu", "My alliance")
+        var st = base.copy(characters = listOf(ch))
+        val e = occurrences(st, d("2026-11-17"), d("2026-11-17")).first { it.key == "s:eternity" }
+        assertEquals(Kind.CHOICE_PENDING, e.kind)
+        val asks = dueBetween(st, ms("2026-11-16", "00:00"), ms("2026-11-16", "23:59")).filterIsInstance<Due.SoloPrompt>()
+        assertEquals(listOf(ms("2026-11-16", "12:00")), asks.map { it.fireAt })
+        st = st.copy(picks = mapOf("a" to mapOf(e.solo!!.occKey to "14")))
+        val r = dueBetween(st, ms("2026-11-17", "00:00"), ms("2026-11-17", "23:59")).filterIsInstance<Due.Reminder>().filter { it.occ.key == "s:eternity" }
+        assertEquals(listOf(ms("2026-11-17", "02:00"), ms("2026-11-17", "12:00")), r.map { it.fireAt })
+        assertTrue(dueBetween(st, ms("2026-11-16", "00:00"), ms("2026-11-16", "23:59")).none { it is Due.SoloPrompt })
+    }
+
+    @Test fun publishedSettings() {
+        // events.json moves the Swordland battle to day 6 and registration to days 2-4, changes a ratio and the slots
+        val st = base.copy(characters = listOf(Character("a", "Pingu", "My alliance")))
+        val incoming = shared.copy(
+            cycle = shared.cycle.map { if (it.id == "brawl") it.copy(on = true, len = 6) else it },
+            trials = listOf(Trial("🎪", "Coliseum", "40/20/40", listOf(0, 1))),
+            slots = Slots(listOf(3, 15), listOf(4, 10)),
+            legions = listOf(LegionDef("Swordland Showdown", "swordland", 2, 4, 6), LegionDef("Tri-Alliance Clash", "triclash", 3, 4, 6)),
+        )
+        val off = st.copy(shared = st.shared.copy(cycle = st.shared.cycle.map { if (it.id == "brawl") it.copy(on = false) else it }))
+        val r = withShared(off, incoming, 3)
+        assertEquals(3, r.sharedVersion)
+        assertTrue(!r.shared.cycle.first { it.id == "brawl" }.on)                       // own on/off kept
+        assertEquals(6, r.shared.cycle.first { it.id == "brawl" }.len)                  // format from the file
+        assertEquals("40/20/40", r.trials.single().ratio)
+        assertEquals(listOf(3, 15), soloEvents(r).single().slots)
+        assertEquals(listOf(4, 10), battleSlots(r))
+        assertEquals(2, r.choiceGroups.first { it.group == "Swordland Showdown" }.regFrom)
+        assertEquals(6, r.alliances["My alliance"]!!.timed.first { it.id == "sl-l1" }.rule.from)
+        assertEquals(DEFAULT_ETERNITY_SLOTS, soloEvents(st).single().slots)            // nothing published: defaults
     }
 }

@@ -31,7 +31,7 @@ object Store {
         }
         if (bundledVer > s.sharedVersion) {
             Log.i("Bundled events v$bundledVer newer than saved v${s.sharedVersion}: updating")
-            s = s.copy(shared = Codec.mergeShared(s.shared, bundled), sharedVersion = bundledVer)
+            s = withShared(s, bundled, bundledVer)
         }
         withGroupLeads(s).let { if (it != s) { Log.i("Moved per-item reminder times to their groups"); s = it } }
         withKingdomNames(s).let { if (it != s) { Log.i("Renamed kingdoms to plain numbers: ${it.kingdoms.keys}"); s = it } }
@@ -87,7 +87,7 @@ object Store {
                     }
                     else -> {
                         Log.i("Events updated v${s.sharedVersion} -> v${parsed.first}, ${parsed.second.cycle.size} events (${System.currentTimeMillis() - t0} ms)")
-                        s.copy(shared = Codec.mergeShared(s.shared, parsed.second), sharedVersion = parsed.first) to "Events updated to v${parsed.first}"
+                        withShared(s, parsed.second, parsed.first) to "Events updated to v${parsed.first}"
                     }
                 }
             }

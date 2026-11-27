@@ -9,6 +9,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -35,6 +37,7 @@ fun AgendaScreen(model: AppModel, modifier: Modifier, onGo: (Tab) -> Unit) {
     var who by remember { mutableStateOf(ALL) }
     var choosing by remember { mutableStateOf<Occurrence?>(null) }
     var battleFor by remember { mutableStateOf<Pair<String, Int>?>(null) }   // alliance, day
+    var soloFor by remember { mutableStateOf<Occurrence?>(null) }
     val ctx = LocalContext.current
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         model.reload()
@@ -87,10 +90,19 @@ fun AgendaScreen(model: AppModel, modifier: Modifier, onGo: (Tab) -> Unit) {
                         GroupLabel(kingdomTag(k))
                         for (e in ev) EventRow(e)
                     }
-                    if (rows.isNotEmpty() || s.characters.isNotEmpty()) GroupLabel("Times")
+                    val trials = trialsOn(s, n)
+                    if (trials.isNotEmpty()) {
+                        GroupLabel("Mystic Trials")
+                        for (t in trials) PlainRow(t.ratio, withEmoji(t.emoji, t.name))
+                    }
+                    if (rows.isNotEmpty() || s.characters.isNotEmpty()) GroupLabel("Scheduled")
                     if (rows.isEmpty() && s.characters.isNotEmpty()) Hint("Nothing with a time.", Modifier.padding(vertical = 4.dp))
                     for (o in rows) OccurrenceRow(o, colors[o.charId] ?: 0, now, zone, multi = s.characters.size > 1) {
-                        if (o.key == BATTLE_KEY) battleFor = o.alliance to o.day else choosing = o
+                        when {
+                            o.key == BATTLE_KEY -> battleFor = o.alliance to o.day
+                            o.solo != null -> soloFor = o
+                            else -> choosing = o
+                        }
                     }
                 }
             }
@@ -100,6 +112,7 @@ fun AgendaScreen(model: AppModel, modifier: Modifier, onGo: (Tab) -> Unit) {
 
     choosing?.let { o -> LegionDialog(model, o) { choosing = null } }
     battleFor?.let { (al, day) -> BattleDialog(model, al, day) { battleFor = null } }
+    soloFor?.let { o -> SoloDialog(model, o) { soloFor = null } }
 }
 
 /** Small accent label inside a day card: GLOBAL, #1130, TIMES. */
@@ -109,24 +122,83 @@ private fun GroupLabel(text: String) {
         modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
 }
 
-/** An event without a time: same layout as the time rows; the last day stands out. */
+/** An event without a time: same layout as the time rows. Last day and one-day events use the accent; KvK the second accent. */
 @Composable
 private fun EventRow(e: DayEvent) {
-    val ends = e.endsToday
-    val accent = MaterialTheme.colorScheme.primary
-    Surface(Modifier.fillMaxWidth().padding(vertical = 2.dp), shape = RoundedCornerShape(8.dp),
-        color = if (ends) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh) {
+    val marked = eventMarked(e)
+    val hl = kvkHighlight()
+    val bar = when { e.highlight -> hl.bar; marked -> MaterialTheme.colorScheme.primary; else -> Color.Transparent }
+    val bg = when { e.highlight -> hl.container; marked -> MaterialTheme.colorScheme.primaryContainer; else -> MaterialTheme.colorScheme.surfaceContainerHigh }
+    val fg = when { e.highlight -> hl.onContainer; marked -> MaterialTheme.colorScheme.onPrimaryContainer; else -> MaterialTheme.colorScheme.onSurface }
+    val note = eventEndNote(e)
+    Surface(Modifier.fillMaxWidth().padding(vertical = 2.dp), shape = RoundedCornerShape(8.dp), color = bg) {
         Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(6.dp).fillMaxHeight().background(if (ends) accent else Color.Transparent))
+            Box(Modifier.width(6.dp).fillMaxHeight().background(bar))
             Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(eventStatus(e), modifier = Modifier.width(96.dp), style = MaterialTheme.typography.labelLarge,
-                    fontWeight = if (ends) FontWeight.Bold else FontWeight.Normal,
-                    color = if (ends) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(withEmoji(e.emoji, e.name), modifier = Modifier.weight(1f), fontWeight = if (ends) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (ends) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
+                Column(Modifier.width(96.dp)) {
+                    Text(eventStatus(e), style = MaterialTheme.typography.labelLarge, fontWeight = if (marked) FontWeight.Bold else FontWeight.Normal,
+                        color = if (marked || e.highlight) fg else MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (note != null) Text(note, style = MaterialTheme.typography.bodySmall, color = fg)
+                }
+                Text(withEmoji(e.emoji, e.name), modifier = Modifier.weight(1f), color = fg,
+                    fontWeight = if (marked || e.highlight) FontWeight.SemiBold else FontWeight.Normal)
             }
         }
     }
+}
+
+/** Row with a short label on the left (Mystic Trials ratio). */
+@Composable
+private fun PlainRow(left: String, text: String) {
+    Surface(Modifier.fillMaxWidth().padding(vertical = 2.dp), shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Row(Modifier.padding(start = 18.dp, end = 12.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(left, modifier = Modifier.width(96.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(text, modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+/** Eternity's Reach: the slot this character plays (or not playing), for one occurrence. */
+@Composable
+private fun SoloDialog(model: AppModel, o: Occurrence, onClose: () -> Unit) {
+    val info = o.solo ?: return
+    val ch = model.state.characters.firstOrNull { it.id == o.charId }
+    val usual = ch?.usual?.get(info.event.name)
+    fun set(value: String?) {
+        model.update("solo ${o.charName} ${info.occKey} -> ${value ?: "usual"}") { s ->
+            val m = (s.picks[o.charId] ?: emptyMap()).toMutableMap()
+            if (value == null) m.remove(info.occKey) else m[info.occKey] = value
+            s.copy(picks = s.picks + (o.charId to m))
+        }
+        onClose()
+    }
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { DialogTitle(displayEmoji(o.emoji).ifBlank { "🔅" }, info.event.name) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (ch != null) ColorDot(ch.color)
+                    Text(" " + o.charName, fontWeight = FontWeight.SemiBold)
+                }
+                Hint("${dayLabel(o.day)}. Pick the time slot you registered for.")
+                Spacer(Modifier.height(6.dp))
+                for (h in info.event.slots) {
+                    val ms = o.day * DAY_MS + h * 60 * MIN_MS
+                    OutlinedButton(onClick = { set(h.toString()) }, modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                        Text((if (info.selected == h.toString()) "✓ " else "") + fmtBoth(ms, ZoneId.systemDefault()), modifier = Modifier.weight(1f))
+                    }
+                }
+                OutlinedButton(onClick = { set(NONE) }, modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                    Text((if (info.selected == NONE) "✓ " else "") + "Not playing", modifier = Modifier.weight(1f))
+                }
+                if (info.explicit) TextButton(onClick = { set(null) }) {
+                    Text("Use the usual choice" + (usual?.let { u -> " (" + (if (u == NONE) "not playing" else "%02d:00 UTC".format(u.toIntOrNull() ?: 0)) + ")" } ?: " (ask)"))
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onClose) { Text("Close") } },
+    )
 }
 
 /** Friday Sanctuary & Fortress hours for one alliance: any of the voted slots. */
@@ -141,7 +213,7 @@ private fun BattleDialog(model: AppModel, alliance: String, day: Int, onClose: (
             Column {
                 Hint("${dayLabel(day)}. Pick the hours of your battles (the slot most voted at sign-up). One reminder per hour.")
                 Spacer(Modifier.height(6.dp))
-                for (h in BATTLE_SLOTS) {
+                for (h in battleSlots(model.state)) {
                     val ms = day * DAY_MS + h * 60 * MIN_MS
                     Row(Modifier.fillMaxWidth().clickable { picked = if (h in picked) picked - h else picked + h }.padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically) {
@@ -170,10 +242,11 @@ private fun BattleDialog(model: AppModel, alliance: String, day: Int, onClose: (
 @Composable
 private fun OccurrenceRow(o: Occurrence, color: Int, now: Long, zone: ZoneId, multi: Boolean, onChoose: () -> Unit) {
     val past = o.minute != null && o.atMs < now
-    val clickable = o.choice != null || o.key == BATTLE_KEY
+    val clickable = o.choice != null || o.solo != null || o.key == BATTLE_KEY
+    val hl = kvkHighlight()
     Surface(Modifier.fillMaxWidth().padding(vertical = 3.dp).alpha(if (past) 0.5f else 1f).clip(RoundedCornerShape(8.dp))
         .let { if (clickable) it.clickable(onClick = onChoose) else it },
-        shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        shape = RoundedCornerShape(8.dp), color = if (o.highlight) hl.container else MaterialTheme.colorScheme.surfaceContainerHigh) {
         Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(6.dp).fillMaxHeight().background(if (color != 0) Color(color) else Color.Transparent))
             Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -188,11 +261,12 @@ private fun OccurrenceRow(o: Occurrence, color: Int, now: Long, zone: ZoneId, mu
                     val sub = buildList {
                         if (multi) add(o.charName)
                         when (o.kind) {
-                            Kind.CHOICE_PENDING -> add("legion not set — tap to choose")
+                            Kind.CHOICE_PENDING -> add(if (o.solo != null) "time not set — tap to choose" else "legion not set — tap to choose")
                             Kind.CHOICE_NONE -> add("not playing — tap to change")
                             Kind.BATTLE_TBD -> add("time TBD — tap to set")
                             Kind.TIMED -> if (o.choice != null) add(if (o.choice.explicit) "tap to change" else "usual legion — tap to change")
                                 else if (o.key == BATTLE_KEY) add("tap to change")
+                                else if (o.solo != null) add(if (o.solo.explicit) "tap to change" else "usual time — tap to change")
                         }
                     }
                     if (sub.isNotEmpty()) Hint(sub.joinToString(" · "))

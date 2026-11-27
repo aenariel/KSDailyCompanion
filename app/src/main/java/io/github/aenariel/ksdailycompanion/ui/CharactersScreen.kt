@@ -88,8 +88,8 @@ private fun CharacterDialog(model: AppModel, start: Character, onClose: () -> Un
                 Spacer(Modifier.height(10.dp))
                 ColorPalette(c.color) { c = c.copy(color = it) }
               }
-                if (al != null) SectionCard("Usual legion") {
-                    Hint("Used when you don't pick one for a given week. \"Ask\" sends a question on registration days.")
+                if (al != null) SectionCard("Usual choices") {
+                    Hint("Used when you don't pick for a given week. \"Ask\" sends a question (legions: on registration days; Eternity's Reach: the day before).")
                     for (g in s.choiceGroups) {
                         val opts = al.timed.filter { it.on && it.group == g.group }
                         if (opts.isEmpty()) continue
@@ -97,6 +97,9 @@ private fun CharacterDialog(model: AppModel, start: Character, onClose: () -> Un
                             listOf("" to "Ask") + opts.map { it.id to Notifier.shortLabel(it.label) + " · " + it.time } + listOf(NONE to "Not playing"),
                             Modifier.padding(vertical = 2.dp)) { v -> c = c.copy(usual = if (v.isEmpty()) c.usual - g.group else c.usual + (g.group to v)) }
                     }
+                    for (se in soloEvents(s)) Picker(se.name, c.usual[se.name] ?: "",
+                        listOf("" to "Ask") + se.slots.map { it.toString() to "%02d:00 UTC".format(it) } + listOf(NONE to "Not playing"),
+                        Modifier.padding(vertical = 2.dp)) { v -> c = c.copy(usual = if (v.isEmpty()) c.usual - se.name else c.usual + (se.name to v)) }
                 }
                 if (al != null) SectionCard("Notify me about") {
                     // Groups with several items (e.g. Bear Traps) get one selector; the rest get a switch each
@@ -130,6 +133,7 @@ private fun CharacterDialog(model: AppModel, start: Character, onClose: () -> Un
                     for (g in s.choiceGroups) if (al.timed.any { it.on && it.group == g.group }) rows += Triple("g:${g.group}", g.group, "legion battles and registration")
                     for (ev in viewFor(s, al.kingdom).cycle.filter { it.on && it.startTime.isNotBlank() }) rows += Triple("c:${ev.id}", withEmoji(ev.emoji, ev.name), ev.startTime)
                     rows += Triple(BATTLE_KEY, withEmoji(BATTLE_EMOJI, BATTLE_TITLE), "Fridays; set the hours in the agenda")
+                    for (se in soloEvents(s)) rows += Triple(se.key, withEmoji(viewFor(s, al.kingdom).event(se.id)?.emoji ?: "", se.name), "your time slot, asked the day before")
                     for ((key, label, sub) in rows) SwitchRow(label, key !in c.off, sub) { on -> c = c.copy(off = if (on) c.off - key else c.off + key) }
                 }
             }

@@ -15,6 +15,12 @@ data class CycleEvent(
     val maxDay: Int = 0,
     val endTime: String = "",
     val startTime: String = "",
+    /** Days of the event to show (empty = every day), e.g. Viking Vengeance 1 and 3. */
+    val days: List<Int> = emptyList(),
+    /** Mark the last day (false for e.g. KvK Matchmaking). */
+    val lastDay: Boolean = true,
+    /** Stands out in the agenda (KvK, Castle Battle). */
+    val highlight: Boolean = false,
 )
 
 data class SpecialEvent(
@@ -50,7 +56,24 @@ data class TimedItem(
     val rule: Rule,
 )
 
-data class Shared(val anchor: String, val cycle: List<CycleEvent>, val special: List<SpecialEvent>)
+/**
+ * What events.json publishes: the global events and, optionally, game settings (Mystic Trials,
+ * possible hours of Eternity's Reach and of the Friday battles, legion registration and battle days).
+ */
+data class Shared(
+    val anchor: String,
+    val cycle: List<CycleEvent>,
+    val special: List<SpecialEvent>,
+    val trials: List<Trial>? = null,
+    val slots: Slots? = null,
+    val legions: List<LegionDef>? = null,
+)
+
+/** Possible hours (UTC). */
+data class Slots(val eternity: List<Int>, val battles: List<Int>)
+
+/** A legion event: registration days and battle day, counted in days of event [ev]. */
+data class LegionDef(val group: String, val ev: String, val regFrom: Int, val regTo: Int, val battleDay: Int)
 
 data class Kingdom(val variant: String = "young", val cycle: List<CycleEvent> = emptyList(), val special: List<SpecialEvent> = emptyList())
 
@@ -105,7 +128,10 @@ data class Settings(
     val digestMin: Int = 8 * 60,
     /** When the legion question is asked on registration days, minutes after 00:00 UTC. */
     val promptMin: Int = 12 * 60,
+    /** When the Eternity's Reach time is asked, the day before, minutes after 00:00 UTC. */
+    val soloPromptMin: Int = 12 * 60,
     val eventsUrl: String = DEFAULT_EVENTS_URL,
+    val showTrials: Boolean = true,
 )
 
 data class CompanionState(
@@ -121,6 +147,20 @@ data class CompanionState(
     val settings: Settings = Settings(),
     /** Sanctuary/Fortress battle hours per alliance and Friday: alliance -> (yyyy-mm-dd -> UTC hours). */
     val battles: Map<String, Map<String, List<Int>>> = emptyMap(),
+    /** Mystic Trials by weekday, as in the agenda. */
+    val trials: List<Trial> = DEFAULT_TRIALS,
+)
+
+/** A Mystic Trial with its troop ratio, on weekdays (0 = Monday). */
+data class Trial(val emoji: String, val name: String, val ratio: String, val days: List<Int>)
+
+val DEFAULT_TRIALS = listOf(
+    Trial("🎪", "Coliseum", "50/10/40", listOf(0, 1)),
+    Trial("🌲", "Forest of Life", "50/15/35", listOf(2, 3)),
+    Trial("💎", "Crystal Cave", "60/20/20", listOf(2, 3)),
+    Trial("📜", "Knowledge Nexus", "50/20/30", listOf(4, 5)),
+    Trial("🌋", "Molten Fort", "60/15/25", listOf(4, 5)),
+    Trial("🗼", "Radiant Spire", "50/15/35", listOf(6)),
 )
 
 const val SCHEMA = 1
@@ -185,6 +225,20 @@ fun withVikings(s: CompanionState): CompanionState {
     return s.copy(alliances = LinkedHashMap(s.alliances.mapValues { (_, a) -> if (a.timed.any { it.group == VIKING_GROUP }) a else a.copy(timed = a.timed + vikingItems()) }))
 }
 
+/** A single-player event where each character picks a time slot (Eternity's Reach). */
+data class SoloEvent(val id: String, val name: String, val slots: List<Int>) {
+    val key: String get() = "s:$id"
+}
+
+val DEFAULT_ETERNITY_SLOTS = listOf(2, 5, 11, 14, 16, 18, 21)
+
+/** Single-player events with their slots (from events.json when it publishes them). */
+fun soloEvents(s: CompanionState): List<SoloEvent> =
+    listOf(SoloEvent("eternity", "Eternity's Reach", s.shared.slots?.eternity?.takeIf { it.isNotEmpty() } ?: DEFAULT_ETERNITY_SLOTS))
+
+/** Possible hours of the Friday battles (from events.json when it publishes them). */
+fun battleSlots(s: CompanionState): List<Int> = s.shared.slots?.battles?.takeIf { it.isNotEmpty() } ?: BATTLE_SLOTS
+
 /** Sanctuary & Fortress battles: every Friday, at the slot most voted at sign-up. */
 const val BATTLE_KEY = "b:sanctuary"
 const val BATTLE_TITLE = "Sanctuary & Fortress"
@@ -209,6 +263,32 @@ fun withKingdomNames(s: CompanionState): CompanionState {
     return s.copy(kingdoms = ks, alliances = LinkedHashMap(s.alliances.mapValues { (_, a) -> renamed[a.kingdom]?.let { a.copy(kingdom = it) } ?: a }))
 }
 
+/** Keeps each global event's on/off from the current list, like the agenda does. */
+fun mergeOnOff(current: Shared, incoming: Shared): Shared {
+    val onOff = current.cycle.associate { it.id to it.on }
+    return incoming.copy(cycle = incoming.cycle.map { e -> onOff[e.id]?.let { e.copy(on = it) } ?: e })
+}
+
+/** Applies the game settings of the published file: Mystic Trials, legion registration days and battle days. */
+fun applySharedConfig(s: CompanionState): CompanionState {
+    var st = s
+    st.shared.trials?.takeIf { it.isNotEmpty() }?.let { st = st.copy(trials = it) }
+    val legions = st.shared.legions?.takeIf { it.isNotEmpty() } ?: return st
+    val groups = legions.map { ChoiceGroup(it.group, it.ev, it.regFrom, it.regTo) }
+    val byGroup = legions.associateBy { it.group }
+    val alliances = LinkedHashMap(st.alliances.mapValues { (_, a) ->
+        a.copy(timed = a.timed.map { t ->
+            val l = byGroup[t.group]
+            if (l != null && t.rule.type == "event") t.copy(rule = t.rule.copy(ev = l.ev, from = l.battleDay, to = l.battleDay)) else t
+        })
+    })
+    return st.copy(choiceGroups = groups, alliances = alliances)
+}
+
+/** A newer events.json: global events (keeping on/off) and its game settings. */
+fun withShared(s: CompanionState, incoming: Shared, version: Int): CompanionState =
+    applySharedConfig(s.copy(shared = mergeOnOff(s.shared, incoming), sharedVersion = version))
+
 /**
  * Resets event formats to the published ones: global events become [shared] exactly; each kingdom's default
  * events get the default name, length, period and switches back, keeping their dates. Custom events stay.
@@ -222,7 +302,7 @@ fun resetFormats(s: CompanionState, shared: Shared, version: Int): CompanionStat
         val cycle = defs.map { d -> mine[d.id]?.let { d.copy(start = mod(it.start, maxOf(1, d.every))) } ?: d } + k.cycle.filter { it.id !in ids }
         kingdoms[name] = k.copy(cycle = cycle)
     }
-    return s.copy(shared = shared, sharedVersion = version, kingdoms = kingdoms)
+    return applySharedConfig(s.copy(shared = shared, sharedVersion = version, kingdoms = kingdoms))
 }
 
 /** First run: no kingdom, alliance or character; the user creates them. */

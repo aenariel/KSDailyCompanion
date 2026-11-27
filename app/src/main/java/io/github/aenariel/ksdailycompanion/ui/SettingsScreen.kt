@@ -7,7 +7,10 @@ import android.net.Uri
 import android.provider.Settings as AndroidSettings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -18,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -48,6 +52,7 @@ private fun leadKeys(s: CompanionState): List<Pair<String, String>> {
     out[groupKey(BEAR_GROUP)] = "🐻 $BEAR_GROUP"
     for (g in s.choiceGroups) out["g:${g.group}"] = g.group
     out[BATTLE_KEY] = withEmoji(BATTLE_EMOJI, BATTLE_TITLE)
+    for (se in soloEvents(s)) out[se.key] = withEmoji(s.shared.cycle.firstOrNull { it.id == se.id }?.emoji ?: "", se.name)
     for (a in s.alliances.values) for (t in a.timed) {
         if (t.group in choice) continue
         if (t.group.isNotBlank()) out.putIfAbsent(groupKey(t.group), withEmoji(t.emoji, t.group))
@@ -102,9 +107,26 @@ fun SettingsScreen(model: AppModel, modifier: Modifier) {
             }
         }
 
-        SectionCard("Legion registration", key = "set-legion") {
+        SectionCard("Questions", key = "set-legion") {
             ValueRow("Ask which legion at", timePreview(timeString(st.promptMin), model.now, zone),
                 "On registration days, for each character without a pick for that week.") { dialog = "prompt" }
+            ValueRow("Ask the Eternity's Reach time at", timePreview(timeString(st.soloPromptMin), model.now, zone),
+                "The day before, for each character without a time.") { dialog = "solo" }
+        }
+
+        SectionCard("Appearance", key = "set-look") {
+            Text("Accent colour")
+            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                for (a in Accent.entries) {
+                    val sel = a == model.accent
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { model.setAccent(a) }.padding(4.dp)) {
+                        Box(Modifier.size(28.dp).border(2.dp, if (sel) MaterialTheme.colorScheme.onSurface else androidx.compose.ui.graphics.Color.Transparent, CircleShape)
+                            .padding(4.dp).background(androidx.compose.ui.graphics.Color(if (androidx.compose.foundation.isSystemInDarkTheme()) a.dark else a.light), CircleShape))
+                        Text(a.label, style = MaterialTheme.typography.labelSmall, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal)
+                    }
+                }
+            }
+            SwitchRow("Show Mystic Trials", st.showTrials, "Trial of the day and its troop ratio, in the agenda") { on -> setSettings("trials on=$on") { it.copy(showTrials = on) } }
         }
 
         SectionCard("Daily summary", key = "set-digest") {
@@ -196,12 +218,14 @@ fun SettingsScreen(model: AppModel, modifier: Modifier) {
                 dialog = null
             }
         }
-        d == "prompt" || d == "digest" -> {
-            val cur = if (d == "prompt") st.promptMin else st.digestMin
-            TextDialog(if (d == "prompt") "Ask at (UTC)" else "Summary at (UTC)", timeString(cur), "Hour in UTC, e.g. 12 or 12:30.", { dialog = null }) { text ->
+        d == "prompt" || d == "digest" || d == "solo" -> {
+            val cur = when (d) { "prompt" -> st.promptMin; "solo" -> st.soloPromptMin; else -> st.digestMin }
+            TextDialog(if (d == "digest") "Summary at (UTC)" else "Ask at (UTC)", timeString(cur), "Hour in UTC, e.g. 12 or 12:30.", { dialog = null }) { text ->
                 val m = parseTime(text)?.takeIf { it < 24 * 60 }
                 if (m == null) model.toast("Type an hour, e.g. 12:30")
-                else setSettings("$d time ${timeString(m)}") { if (d == "prompt") it.copy(promptMin = m) else it.copy(digestMin = m) }
+                else setSettings("$d time ${timeString(m)}") {
+                    when (d) { "prompt" -> it.copy(promptMin = m); "solo" -> it.copy(soloPromptMin = m); else -> it.copy(digestMin = m) }
+                }
                 dialog = null
             }
         }

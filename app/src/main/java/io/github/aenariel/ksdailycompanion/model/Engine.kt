@@ -87,6 +87,9 @@ enum class Kind { TIMED, CHOICE_PENDING, CHOICE_NONE, BATTLE_TBD }
 
 data class ChoiceInfo(val group: ChoiceGroup, val occKey: String, val options: List<TimedItem>, val selected: String?, val explicit: Boolean)
 
+/** Eternity's Reach and the like: a time slot picked per character and occurrence (hour as text, or NONE). */
+data class SoloInfo(val event: SoloEvent, val occKey: String, val selected: String?, val explicit: Boolean)
+
 data class Occurrence(
     val charId: String,
     /** Name with alliance and kingdom, e.g. "Pingu (Ffs, #1130)". */
@@ -102,6 +105,9 @@ data class Occurrence(
     val choice: ChoiceInfo? = null,
     /** The character's alliance (used by the Sanctuary/Fortress hours, which are per alliance). */
     val alliance: String = "",
+    val solo: SoloInfo? = null,
+    /** KvK, Castle Battle… */
+    val highlight: Boolean = false,
 ) {
     val atMs: Long get() = day * DAY_MS + (minute ?: 0) * MIN_MS
 }
@@ -170,7 +176,23 @@ fun occurrences(state: CompanionState, fromDay: Int, toDay: Int): List<Occurrenc
                 val h = cycleHit(v, ev, n) ?: continue
                 if (h.start != n) continue
                 val m = parseTime(ev.startTime) ?: continue
-                out += Occurrence(ch.id, label, "c:${ev.id}", ev.emoji, ev.name, n, m)
+                out += Occurrence(ch.id, label, "c:${ev.id}", ev.emoji, ev.name, n, m, highlight = ev.highlight)
+            }
+            for (se in soloEvents(state)) {
+                if (se.key in ch.off) continue
+                val ev = v.event(se.id) ?: continue
+                if (!ev.on) continue
+                val h = cycleHit(v, ev, n) ?: continue
+                val key = occKey(se.name, h.start)
+                val explicit = state.picks[ch.id]?.get(key)
+                val sel = explicit ?: ch.usual[se.name]
+                val info = SoloInfo(se, key, sel, explicit != null)
+                val hour = sel?.toIntOrNull()
+                out += when {
+                    sel == null -> Occurrence(ch.id, label, se.key, ev.emoji, se.name, n, null, Kind.CHOICE_PENDING, solo = info)
+                    sel == NONE || hour == null -> Occurrence(ch.id, label, se.key, ev.emoji, se.name, n, null, Kind.CHOICE_NONE, solo = info)
+                    else -> Occurrence(ch.id, label, se.key, ev.emoji, se.name, n, hour * 60, solo = info)
+                }
             }
             if (isBattleDay(n) && BATTLE_KEY !in ch.off) {
                 val hours = state.battles[ch.alliance]?.get(diso(n)).orEmpty()
@@ -191,6 +213,9 @@ sealed class Due {
     data class Prompt(override val id: String, override val fireAt: Long, val charId: String, val charName: String,
                       val group: ChoiceGroup, val occKey: String, val options: List<TimedItem>, val usual: String?) : Due()
     data class Digest(override val id: String, override val fireAt: Long, val day: Int) : Due()
+    /** Asks the day before which slot a character will play (Eternity's Reach). */
+    data class SoloPrompt(override val id: String, override val fireAt: Long, val charId: String, val charName: String,
+                          val event: SoloEvent, val occKey: String, val day: Int, val usual: String?) : Due()
 }
 
 fun leadsFor(s: Settings, key: String): List<Int> = s.leads[key] ?: s.defaultLeads
@@ -238,6 +263,26 @@ fun dueBetween(state: CompanionState, afterMs: Long, uptoMs: Long): List<Due> {
         }
     }
 
+    for (ch in state.characters) {
+        if (!ch.on) continue
+        val al = state.alliances[ch.alliance] ?: continue
+        val v = viewFor(state, al.kingdom)
+        for (se in soloEvents(state)) {
+            if (se.key in ch.off) continue
+            val ev = v.event(se.id) ?: continue
+            if (!ev.on) continue
+            for (n in fromDay..toDay) {
+                val h = cycleHit(v, ev, n) ?: continue
+                if (h.start != n) continue
+                val key = occKey(se.name, h.start)
+                if (state.picks[ch.id]?.containsKey(key) == true) continue
+                val fire = (n - 1) * DAY_MS + s.soloPromptMin * MIN_MS
+                if (fire <= afterMs || fire > uptoMs) continue
+                out += Due.SoloPrompt("sp|${ch.id}|$key", fire, ch.id, charLabel(state, ch), se, key, n, ch.usual[se.name])
+            }
+        }
+    }
+
     if (s.digestOn && state.characters.any { it.on }) {
         for (n in fromDay..toDay) {
             val fire = n * DAY_MS + s.digestMin * MIN_MS
@@ -256,10 +301,13 @@ fun nextFire(state: CompanionState, afterMs: Long, horizonDays: Int = 8): Long? 
 
 data class DayEvent(
     val key: String, val emoji: String, val name: String, val dayIdx: Int, val len: Int, val showDay: Boolean, val maxDay: Int,
-    /** Last day of a multi-day event. */
+    /** Last day of a multi-day event (unless the event turns that off). */
     val endsToday: Boolean = false,
     val endTime: String = "",
-)
+    val highlight: Boolean = false,
+) {
+    val oneDay: Boolean get() = len == 1
+}
 
 /** Events running on day n in one kingdom (the agenda's eventsFor, without the "tomorrow" rows). */
 fun dayEvents(v: View, n: Int): List<DayEvent> {
@@ -267,7 +315,9 @@ fun dayEvents(v: View, n: Int): List<DayEvent> {
     for (ev in v.cycle) {
         if (!ev.on) continue
         val h = cycleHit(v, ev, n) ?: continue
-        list += DayEvent("c:${ev.id}", ev.emoji, ev.name, h.dayIdx, h.end - h.start + 1, ev.showDay, ev.maxDay, h.end == n && h.end > h.start, ev.endTime)
+        if (ev.days.isNotEmpty() && h.dayIdx !in ev.days) continue
+        list += DayEvent("c:${ev.id}", ev.emoji, ev.name, h.dayIdx, h.end - h.start + 1, ev.showDay, ev.maxDay,
+            ev.lastDay && h.end == n && h.end > h.start, ev.endTime, ev.highlight)
     }
     for (sp in v.special) {
         if (!sp.on) continue
@@ -295,9 +345,18 @@ fun kingdomEvents(state: CompanionState, kingdom: String, n: Int): List<DayEvent
     return dayEvents(View(state.shared.anchor, k.cycle.filter { it.id !in ids }, k.special), n)
 }
 
-/** Left column of an event row: "ENDS TODAY", "ENDS 12:00 UTC", "day 3/7" or "today". */
+/** Left column of an event row: "Last day", "Today only" or "day 3/7". */
 fun eventStatus(e: DayEvent): String = when {
-    e.endsToday -> parseTime(e.endTime)?.let { "ENDS " + timeString(it) } ?: "ENDS TODAY"
-    e.len > 1 -> "day ${if (e.maxDay > 0) minOf(e.dayIdx, e.maxDay) else e.dayIdx}/${e.len}"
-    else -> "today"
+    e.endsToday -> "Last day"
+    e.oneDay -> "Today only"
+    else -> "day ${if (e.maxDay > 0) minOf(e.dayIdx, e.maxDay) else e.dayIdx}/${e.len}"
 }
+
+/** "ends 12:00 UTC" under "Last day" when the event ends at a set hour. */
+fun eventEndNote(e: DayEvent): String? = if (e.endsToday) parseTime(e.endTime)?.let { "ends " + timeString(it) } else null
+
+/** Last day or a one-day event: shown with the accent. */
+fun eventMarked(e: DayEvent): Boolean = e.endsToday || e.oneDay
+
+/** Mystic Trials running on day n. */
+fun trialsOn(state: CompanionState, n: Int): List<Trial> = if (!state.settings.showTrials) emptyList() else state.trials.filter { wday(n) in it.days }

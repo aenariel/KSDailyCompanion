@@ -23,11 +23,13 @@ object Codec {
         start = o.optInt("start"), len = o.optInt("len", 1), every = o.optInt("every", 28),
         on = o.optBoolean("on", true), showDay = o.optBoolean("showDay"), maxDay = o.optInt("maxDay"),
         endTime = o.str("endTime"), startTime = o.str("startTime"),
+        days = intList(o.optJSONArray("days")) ?: emptyList(), lastDay = o.optBoolean("lastDay", true), highlight = o.optBoolean("highlight"),
     )
 
     fun cycle(e: CycleEvent): JSONObject = JSONObject()
         .put("id", e.id).put("emoji", e.emoji).put("name", e.name).put("start", e.start).put("len", e.len).put("every", e.every)
         .put("on", e.on).put("showDay", e.showDay).put("maxDay", e.maxDay).put("endTime", e.endTime).put("startTime", e.startTime)
+        .put("days", arr(e.days)).put("lastDay", e.lastDay).put("highlight", e.highlight)
 
     fun special(o: JSONObject) = SpecialEvent(o.str("id"), o.str("emoji"), o.str("name"), o.str("from"), o.str("to"), o.optBoolean("on", true), o.optBoolean("showDay"))
     fun special(s: SpecialEvent): JSONObject = JSONObject()
@@ -52,8 +54,22 @@ object Codec {
     fun timed(t: TimedItem): JSONObject = JSONObject()
         .put("id", t.id).put("on", t.on).put("emoji", t.emoji).put("label", t.label).put("time", t.time).put("group", t.group).put("rule", rule(t.rule))
 
-    fun shared(o: JSONObject) = Shared(o.str("anchor", "2026-11-09"), o.optJSONArray("cycle").mapObj(::cycle), o.optJSONArray("special").mapObj(::special))
-    fun shared(s: Shared): JSONObject = JSONObject().put("anchor", s.anchor).put("cycle", arr(s.cycle.map(::cycle))).put("special", arr(s.special.map(::special)))
+    fun shared(o: JSONObject) = Shared(
+        o.str("anchor", "2026-11-09"), o.optJSONArray("cycle").mapObj(::cycle), o.optJSONArray("special").mapObj(::special),
+        trials = o.optJSONArray("trials")?.let { trials(it) },
+        slots = o.optJSONObject("slots")?.let { Slots(intList(it.optJSONArray("eternity")) ?: emptyList(), intList(it.optJSONArray("battles")) ?: emptyList()) },
+        legions = o.optJSONArray("legions")?.mapObj { l ->
+            LegionDef(l.str("group"), l.str("ev"), l.optInt("regFrom", 3), l.optInt("regTo", 4), l.optInt("battleDay", 7))
+        }?.filter { it.group.isNotBlank() && it.ev.isNotBlank() },
+    )
+
+    fun shared(s: Shared): JSONObject = JSONObject().put("anchor", s.anchor).put("cycle", arr(s.cycle.map(::cycle))).put("special", arr(s.special.map(::special))).also { o ->
+        s.trials?.let { o.put("trials", arr(it.map(::trial))) }
+        s.slots?.let { o.put("slots", JSONObject().put("eternity", arr(it.eternity)).put("battles", arr(it.battles))) }
+        s.legions?.let { o.put("legions", arr(it.map { l -> JSONObject().put("group", l.group).put("ev", l.ev).put("regFrom", l.regFrom).put("regTo", l.regTo).put("battleDay", l.battleDay) })) }
+    }
+
+    fun trial(t: Trial): JSONObject = JSONObject().put("emoji", t.emoji).put("name", t.name).put("ratio", t.ratio).put("days", arr(t.days))
 
     fun kingdom(o: JSONObject) = Kingdom(o.str("variant", "young"), o.optJSONArray("cycle").mapObj(::cycle), o.optJSONArray("special").mapObj(::special))
     fun kingdom(k: Kingdom): JSONObject = JSONObject().put("variant", k.variant).put("cycle", arr(k.cycle.map(::cycle))).put("special", arr(k.special.map(::special)))
@@ -80,6 +96,10 @@ object Codec {
 
     private fun intList(a: JSONArray?): List<Int>? = a?.let { (0 until it.length()).map { i -> it.optInt(i) } }
 
+    /** Agenda format: {emoji, name, ratio, days:[0..6]}. */
+    fun trials(a: JSONArray): List<Trial> = a.mapObj { o -> Trial(o.str("emoji"), o.str("name"), o.str("ratio"), intList(o.optJSONArray("days")) ?: emptyList()) }
+        .filter { it.name.isNotBlank() }
+
     private fun battlesFrom(o: JSONObject?): Map<String, Map<String, List<Int>>> {
         if (o == null) return emptyMap()
         val out = LinkedHashMap<String, Map<String, List<Int>>>()
@@ -98,6 +118,8 @@ object Codec {
             digestOn = o.optBoolean("digestOn", d.digestOn),
             digestMin = o.optInt("digestMin", d.digestMin),
             promptMin = o.optInt("promptMin", d.promptMin),
+            soloPromptMin = o.optInt("soloPromptMin", d.soloPromptMin),
+            showTrials = o.optBoolean("showTrials", d.showTrials),
             eventsUrl = o.str("eventsUrl", d.eventsUrl).ifBlank { d.eventsUrl },
         )
     }
@@ -105,7 +127,7 @@ object Codec {
     fun settings(s: Settings): JSONObject = JSONObject()
         .put("defaultLeads", arr(s.defaultLeads))
         .put("leads", JSONObject().also { o -> s.leads.forEach { (k, v) -> o.put(k, arr(v)) } })
-        .put("digestOn", s.digestOn).put("digestMin", s.digestMin).put("promptMin", s.promptMin).put("eventsUrl", s.eventsUrl)
+        .put("digestOn", s.digestOn).put("digestMin", s.digestMin).put("promptMin", s.promptMin).put("soloPromptMin", s.soloPromptMin).put("eventsUrl", s.eventsUrl).put("showTrials", s.showTrials)
 
     fun state(o: JSONObject, fallbackShared: Shared): CompanionState {
         val kingdoms = LinkedHashMap<String, Kingdom>()
@@ -126,6 +148,7 @@ object Codec {
             choiceGroups = groups.ifEmpty { DEFAULT_CHOICE_GROUPS },
             settings = settings(o.optJSONObject("settings")),
             battles = battlesFrom(o.optJSONObject("battles")),
+            trials = o.optJSONArray("trials")?.let { trials(it) } ?: DEFAULT_TRIALS,
         )
     }
 
@@ -137,6 +160,7 @@ object Codec {
         .put("picks", JSONObject().also { o -> s.picks.forEach { (k, v) -> o.put(k, strMap(v)) } })
         .put("choiceGroups", arr(s.choiceGroups.map(::choice)))
         .put("settings", settings(s.settings))
+        .put("trials", arr(s.trials.map(::trial)))
         .put("battles", JSONObject().also { o -> s.battles.forEach { (al, days) -> o.put(al, JSONObject().also { d -> days.forEach { (k, v) -> d.put(k, arr(v)) } }) } })
 
     /** events.json of KSDailyAgenda: {version, shared:{anchor, cycle, special}}. */
@@ -146,11 +170,7 @@ object Codec {
         if (sh == null || sh.optJSONArray("cycle") == null) null else o.optInt("version") to shared(sh)
     } catch (e: Exception) { null }
 
-    /** Keeps each event's on/off from the current list, like the agenda does. */
-    fun mergeShared(current: Shared, incoming: Shared): Shared {
-        val onOff = current.cycle.associate { it.id to it.on }
-        return incoming.copy(cycle = incoming.cycle.map { e -> onOff[e.id]?.let { e.copy(on = it) } ?: e })
-    }
+    fun mergeShared(current: Shared, incoming: Shared): Shared = mergeOnOff(current, incoming)
 
     class ImportResult(val state: CompanionState, val message: String)
 
@@ -169,18 +189,18 @@ object Codec {
             "ks-agenda-all" -> {
                 val st = o.optJSONObject("state") ?: throw IllegalArgumentException("Agenda backup without state")
                 val schema = st.optInt("schema")
-                if (schema !in 15..17) Log.w("Agenda backup schema $schema (this app reads 15-17); importing what matches")
+                if (schema !in 15..18) Log.w("Agenda backup schema $schema (this app reads 15-18); importing what matches")
                 val ks = LinkedHashMap(cur.kingdoms)
                 st.optJSONObject("kingdoms")?.let { k -> k.keys().forEach { n -> k.optJSONObject(n)?.let { ks[n] = kingdom(it) } } }
                 val al = LinkedHashMap(cur.alliances)
                 var n = 0
                 st.optJSONObject("alliances")?.let { a -> a.keys().forEach { name -> a.optJSONObject(name)?.let { al[name] = legionsOn(alliance(it), cur); n++ } } }
-                var sh = cur.shared
-                var ver = cur.sharedVersion
                 val sv = st.optInt("sharedVersion")
                 val incoming = st.optJSONObject("shared")
-                if (incoming != null && sv > ver) { sh = mergeShared(cur.shared, shared(incoming)); ver = sv }
-                val next = withVikings(withKingdomNames(cleanDefaults(cur.copy(kingdoms = ks, alliances = al, shared = sh, sharedVersion = ver))))
+                val trialList = st.optJSONObject("global")?.optJSONArray("trials")?.let { trials(it) }?.takeIf { it.isNotEmpty() } ?: cur.trials
+                var next = cur.copy(kingdoms = ks, alliances = al, trials = trialList)
+                next = if (incoming != null && sv > cur.sharedVersion) withShared(next, shared(incoming), sv) else applySharedConfig(next)
+                next = withVikings(withKingdomNames(cleanDefaults(next)))
                 return ImportResult(next, "Imported $n alliances and ${st.optJSONObject("kingdoms")?.length() ?: 0} kingdoms from the agenda")
             }
             "ks-agenda" -> {

@@ -26,6 +26,10 @@ class AppModel(private val ctx: Context) {
         private set
     var message by mutableStateOf<String?>(null)
     var notificationsAllowed by mutableStateOf(Notifier.allowed(ctx))
+    var accent by mutableStateOf(UiPrefs.accent(ctx))
+        private set
+
+    fun setAccent(a: Accent) { accent = a; UiPrefs.setAccent(ctx, a); Log.i("Accent: ${a.label}") }
 
     fun update(why: String, f: (CompanionState) -> CompanionState) {
         val next = f(state)
@@ -90,7 +94,7 @@ class MainActivity : ComponentActivity() {
         Scheduler.replan(applicationContext, "app open")
         model.refreshEvents(quiet = true)
         setContent {
-            KsTheme { App(model) }
+            KsTheme(model.accent) { App(model) }
         }
     }
 

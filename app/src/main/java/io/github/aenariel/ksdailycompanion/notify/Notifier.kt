@@ -65,6 +65,7 @@ object Notifier {
             is Due.Reminder -> reminder(ctx, d, now, zone, s.characters.firstOrNull { it.id == d.occ.charId }?.color ?: 0)
             is Due.Prompt -> prompt(ctx, d, zone, s, s.characters.firstOrNull { it.id == d.charId }?.color ?: 0)
             is Due.Digest -> digest(ctx, s, d, zone)
+            is Due.SoloPrompt -> soloPrompt(ctx, d, zone, s.characters.firstOrNull { it.id == d.charId }?.color ?: 0)
         }
     }
 
@@ -119,11 +120,30 @@ object Notifier {
         return null
     }
 
+    private fun soloPrompt(ctx: Context, d: Due.SoloPrompt, zone: ZoneId, color: Int) {
+        val notifId = "sp|${d.charId}|${d.occKey}".hashCode()
+        val slots = d.event.slots.joinToString(", ") { "%02d".format(it) }
+        val title = "${d.event.name} tomorrow: which time?"
+        val text = "${d.charName} — tap to pick ($slots UTC)."
+        val b = builder(ctx, CH_LEGION).setContentTitle(title).setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText("$text\n" + d.event.slots.joinToString("\n") { fmtBoth((d.day * DAY_MS) + it * 60 * MIN_MS, zone) }))
+        d.usual?.toIntOrNull()?.let { h -> b.addAction(0, "Usual · %02d:00 UTC".format(h), pickIntent(ctx, d.charId, d.occKey, h.toString(), notifId)) }
+        b.addAction(0, "Not playing", pickIntent(ctx, d.charId, d.occKey, NONE, notifId))
+        if (color != 0) b.setColor(color)
+        Log.i("Notify ${d.event.name} question: ${d.charName} ${d.occKey}")
+        show(ctx, notifId, b)
+    }
+
     fun confirmPick(ctx: Context, s: CompanionState, charId: String, occ: String, item: String, notifId: Int) {
         val ch = s.characters.firstOrNull { it.id == charId } ?: return
         val group = occ.substringBeforeLast('@')
         val who = charLabel(s, ch)
-        val text = if (item == NONE) "$who: not playing $group" else {
+        val solo = soloEvents(s).firstOrNull { it.name == group }
+        val text = if (item == NONE) "$who: not playing $group" else if (solo != null) {
+            val day = dnum(occ.substringAfterLast('@'))
+            val h = item.toIntOrNull() ?: 0
+            "$who: $group" + (day?.let { " · ${dayLabel(it)} ${fmtBoth(it * DAY_MS + h * 60 * MIN_MS, ZoneId.systemDefault())}" } ?: "")
+        } else {
             val o = s.alliances[ch.alliance]?.timed?.firstOrNull { it.id == item }
             val cg = s.choiceGroups.firstOrNull { it.group == group }
             val at = if (o != null && cg != null) battleMs(s, Due.Prompt("", 0, charId, ch.name, cg, occ, listOf(o), null), o) else null
@@ -148,7 +168,7 @@ object Notifier {
         for (o in occ) {
             val label = when (o.kind) {
                 Kind.TIMED -> "${fmtBoth(o.atMs, zone)} · ${withEmoji(o.emoji, o.title)}"
-                Kind.CHOICE_PENDING -> "${withEmoji(o.emoji, o.title)}: legion not set"
+                Kind.CHOICE_PENDING -> "${withEmoji(o.emoji, o.title)}: ${if (o.solo != null) "time" else "legion"} not set"
                 Kind.CHOICE_NONE -> continue
                 Kind.BATTLE_TBD -> "${withEmoji(o.emoji, o.title)}: time TBD"
             }

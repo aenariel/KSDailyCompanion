@@ -37,6 +37,10 @@ fun KingdomsScreen(model: AppModel, modifier: Modifier) {
                     Text(kingdomTag(name) + if (k.variant == "old") " · Gen 4+" else "", fontWeight = FontWeight.SemiBold)
                     Hint("Alliances: " + alliances.joinToString(", ").ifEmpty { "none" })
                     for (ev in k.cycle.filter { it.on }) Hint(withEmoji(ev.emoji, ev.name) + " · " + runText(v, ev, today), Modifier.padding(start = 8.dp))
+                    val users = s.characters.filter { s.alliances[it.alliance]?.kingdom == name }
+                    if (users.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+                        for (u in users) { ColorDot(u.color, 10); Hint(" ${u.name}  ") }
+                    }
                 }
             }
         }
@@ -163,11 +167,13 @@ private fun RotatingEventDialog(v: View, start: CycleEvent, isNew: Boolean, toda
     var dateText by remember { mutableStateOf(diso(currentOrNext(v, start, today).start)) }
     var lenText by remember { mutableStateOf(start.len.toString()) }
     var everyText by remember { mutableStateOf(start.every.toString()) }
+    var daysText by remember { mutableStateOf(start.days.joinToString(",")) }
     val date = dnum(dateText)
+    val shownDays = daysText.split(',', ';', ' ').mapNotNull { it.trim().toIntOrNull() }.filter { it > 0 }.distinct().sorted()
     val len = lenText.toIntOrNull()?.takeIf { it in 1..60 }
     val every = everyText.toIntOrNull()?.takeIf { it in 1..365 }
     val built = if (date != null && len != null && every != null && e.name.isNotBlank())
-        e.copy(name = e.name.trim(), len = len, every = every, start = startFromDate(v, date, every)) else null
+        e.copy(name = e.name.trim(), len = len, every = every, start = startFromDate(v, date, every), days = shownDays) else null
 
     AlertDialog(
         onDismissRequest = onClose,
@@ -187,6 +193,9 @@ private fun RotatingEventDialog(v: View, start: CycleEvent, isNew: Boolean, toda
                     val h = currentOrNext(v, built, today)
                     Hint(if (h.dayIdx > 0) "Running now: day ${h.dayIdx}, ends ${dayLabel(h.end)}" else "Next: ${dayLabel(h.start)} – ${dayLabel(h.end)}")
                 }
+                OutlinedTextField(daysText, { daysText = it }, label = { Text("Show on days (e.g. 1,3)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Hint("Days of the event to show; empty = every day.")
+                SwitchRow("Mark the last day", e.lastDay, "\"Last day\" on its final day") { e = e.copy(lastDay = it) }
                 SwitchRow("Active", e.on) { e = e.copy(on = it) }
             }
         },

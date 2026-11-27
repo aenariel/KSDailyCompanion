@@ -1,7 +1,7 @@
 {
- "version": 1,
- "updated": "2026-11-26",
- "note": "Fixed events shared by all kingdoms. Bump version when editing so open pages pick it up.",
+ "version": 2,
+ "updated": "2026-11-27",
+ "note": "Shared by every kingdom. Bump version when editing so open pages and KSCompanion pick it up. cycle options: days = days of the event to show (empty = all), lastDay = mark the last day, highlight = stands out in KSCompanion. trials = Mystic Trials (days: 0 = Monday); slots = possible hours (UTC) of Eternity's Reach and of the Friday Sanctuary/Fortress battles; legions = registration days and battle day of each legion event.",
  "shared": {
   "anchor": "2026-11-09",
   "cycle": [
@@ -16,7 +16,10 @@
     "showDay": true,
     "maxDay": 6,
     "endTime": "12 UTC",
-    "startTime": ""
+    "startTime": "",
+    "days": [],
+    "lastDay": true,
+    "highlight": false
    },
    {
     "id": "merchant",
@@ -29,7 +32,10 @@
     "showDay": false,
     "maxDay": 0,
     "endTime": "",
-    "startTime": ""
+    "startTime": "",
+    "days": [],
+    "lastDay": true,
+    "highlight": false
    },
    {
     "id": "swordland",
@@ -42,7 +48,10 @@
     "showDay": false,
     "maxDay": 0,
     "endTime": "",
-    "startTime": ""
+    "startTime": "",
+    "days": [],
+    "lastDay": true,
+    "highlight": false
    },
    {
     "id": "championship",
@@ -55,7 +64,10 @@
     "showDay": false,
     "maxDay": 0,
     "endTime": "",
-    "startTime": ""
+    "startTime": "",
+    "days": [],
+    "lastDay": true,
+    "highlight": false
    },
    {
     "id": "armament1",
@@ -68,7 +80,10 @@
     "showDay": false,
     "maxDay": 0,
     "endTime": "",
-    "startTime": ""
+    "startTime": "",
+    "days": [],
+    "lastDay": true,
+    "highlight": false
    },
    {
     "id": "sanctuary",
@@ -81,7 +96,10 @@
     "showDay": false,
     "maxDay": 0,
     "endTime": "",
-    "startTime": ""
+    "startTime": "",
+    "days": [],
+    "lastDay": true,
+    "highlight": false
    },
    {
     "id": "officer1",
@@ -94,7 +112,10 @@
     "showDay": false,
     "maxDay": 0,
     "endTime": "",
-    "startTime": ""
+    "startTime": "",
+    "days": [],
+    "lastDay": true,
+    "highlight": false
    },
    {
     "id": "armament2",
@@ -107,7 +128,10 @@
     "showDay": false,
     "maxDay": 0,
     "endTime": "",
-    "startTime": ""
+    "startTime": "",
+    "days": [],
+    "lastDay": true,
+    "highlight": false
    },
    {
     "id": "officer2",
@@ -120,7 +144,10 @@
     "showDay": false,
     "maxDay": 0,
     "endTime": "",
-    "startTime": ""
+    "startTime": "",
+    "days": [],
+    "lastDay": true,
+    "highlight": false
    },
    {
     "id": "hallheroes",
@@ -133,7 +160,10 @@
     "showDay": false,
     "maxDay": 0,
     "endTime": "",
-    "startTime": ""
+    "startTime": "",
+    "days": [],
+    "lastDay": true,
+    "highlight": false
    },
    {
     "id": "sg",
@@ -146,7 +176,10 @@
     "showDay": true,
     "maxDay": 0,
     "endTime": "",
-    "startTime": ""
+    "startTime": "",
+    "days": [],
+    "lastDay": true,
+    "highlight": false
    },
    {
     "id": "glaives",
@@ -159,7 +192,10 @@
     "showDay": false,
     "maxDay": 0,
     "endTime": "",
-    "startTime": ""
+    "startTime": "",
+    "days": [],
+    "lastDay": true,
+    "highlight": false
    },
    {
     "id": "vikings",
@@ -172,7 +208,13 @@
     "showDay": false,
     "maxDay": 0,
     "endTime": "",
-    "startTime": ""
+    "startTime": "",
+    "days": [
+     1,
+     3
+    ],
+    "lastDay": true,
+    "highlight": false
    },
    {
     "id": "eternity",
@@ -185,7 +227,10 @@
     "showDay": false,
     "maxDay": 0,
     "endTime": "",
-    "startTime": ""
+    "startTime": "",
+    "days": [],
+    "lastDay": true,
+    "highlight": false
    },
    {
     "id": "roulette",
@@ -198,7 +243,10 @@
     "showDay": false,
     "maxDay": 0,
     "endTime": "",
-    "startTime": ""
+    "startTime": "",
+    "days": [],
+    "lastDay": true,
+    "highlight": false
    },
    {
     "id": "beasts",
@@ -211,7 +259,10 @@
     "showDay": false,
     "maxDay": 0,
     "endTime": "",
-    "startTime": ""
+    "startTime": "",
+    "days": [],
+    "lastDay": true,
+    "highlight": false
    },
    {
     "id": "brew",
@@ -224,7 +275,10 @@
     "showDay": false,
     "maxDay": 0,
     "endTime": "",
-    "startTime": ""
+    "startTime": "",
+    "days": [],
+    "lastDay": true,
+    "highlight": false
    },
    {
     "id": "allout",
@@ -237,7 +291,10 @@
     "showDay": false,
     "maxDay": 0,
     "endTime": "",
-    "startTime": ""
+    "startTime": "",
+    "days": [],
+    "lastDay": true,
+    "highlight": false
    },
    {
     "id": "castle",
@@ -250,7 +307,10 @@
     "showDay": false,
     "maxDay": 0,
     "endTime": "",
-    "startTime": "12 UTC"
+    "startTime": "12 UTC",
+    "days": [],
+    "lastDay": true,
+    "highlight": true
    },
    {
     "id": "mobilization",
@@ -263,7 +323,10 @@
     "showDay": false,
     "maxDay": 0,
     "endTime": "",
-    "startTime": ""
+    "startTime": "",
+    "days": [],
+    "lastDay": true,
+    "highlight": false
    },
    {
     "id": "triclash",
@@ -276,7 +339,10 @@
     "showDay": false,
     "maxDay": 0,
     "endTime": "",
-    "startTime": ""
+    "startTime": "",
+    "days": [],
+    "lastDay": true,
+    "highlight": false
    },
    {
     "id": "kvkmatch",
@@ -289,7 +355,10 @@
     "showDay": false,
     "maxDay": 0,
     "endTime": "",
-    "startTime": ""
+    "startTime": "",
+    "days": [],
+    "lastDay": false,
+    "highlight": true
    },
    {
     "id": "kvkprep",
@@ -302,7 +371,10 @@
     "showDay": true,
     "maxDay": 5,
     "endTime": "10 UTC",
-    "startTime": ""
+    "startTime": "",
+    "days": [],
+    "lastDay": true,
+    "highlight": true
    },
    {
     "id": "kvkbattle",
@@ -315,7 +387,10 @@
     "showDay": false,
     "maxDay": 0,
     "endTime": "",
-    "startTime": "12 UTC"
+    "startTime": "12 UTC",
+    "days": [],
+    "lastDay": true,
+    "highlight": true
    }
   ],
   "special": [
@@ -327,6 +402,95 @@
     "name": "Fantasy Theater",
     "from": "2026-11-09",
     "to": "2026-11-15"
+   }
+  ],
+  "trials": [
+   {
+    "emoji": "🎪",
+    "name": "Coliseum",
+    "ratio": "50/10/40",
+    "days": [
+     0,
+     1
+    ]
+   },
+   {
+    "emoji": "🌲",
+    "name": "Forest of Life",
+    "ratio": "50/15/35",
+    "days": [
+     2,
+     3
+    ]
+   },
+   {
+    "emoji": "💎",
+    "name": "Crystal Cave",
+    "ratio": "60/20/20",
+    "days": [
+     2,
+     3
+    ]
+   },
+   {
+    "emoji": "📜",
+    "name": "Knowledge Nexus",
+    "ratio": "50/20/30",
+    "days": [
+     4,
+     5
+    ]
+   },
+   {
+    "emoji": "🌋",
+    "name": "Molten Fort",
+    "ratio": "60/15/25",
+    "days": [
+     4,
+     5
+    ]
+   },
+   {
+    "emoji": "🗼",
+    "name": "Radiant Spire",
+    "ratio": "50/15/35",
+    "days": [
+     6
+    ]
+   }
+  ],
+  "slots": {
+   "eternity": [
+    2,
+    5,
+    11,
+    14,
+    16,
+    18,
+    21
+   ],
+   "battles": [
+    3,
+    9,
+    13,
+    14,
+    17
+   ]
+  },
+  "legions": [
+   {
+    "group": "Swordland Showdown",
+    "ev": "swordland",
+    "regFrom": 3,
+    "regTo": 4,
+    "battleDay": 7
+   },
+   {
+    "group": "Tri-Alliance Clash",
+    "ev": "triclash",
+    "regFrom": 3,
+    "regTo": 4,
+    "battleDay": 6
    }
   ]
  }

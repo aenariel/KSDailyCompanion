@@ -135,6 +135,8 @@ object UiPrefs {
     private fun prefs(ctx: android.content.Context) = ctx.getSharedPreferences("ui", 0)
     fun isOpen(ctx: android.content.Context, key: String, default: Boolean) = prefs(ctx).getBoolean("card:$key", default)
     fun setOpen(ctx: android.content.Context, key: String, open: Boolean) = prefs(ctx).edit().putBoolean("card:$key", open).apply()
+    fun accent(ctx: android.content.Context): Accent = Accent.of(prefs(ctx).getString("accent", null))
+    fun setAccent(ctx: android.content.Context, a: Accent) = prefs(ctx).edit().putString("accent", a.name).apply()
 }
 
 /**
