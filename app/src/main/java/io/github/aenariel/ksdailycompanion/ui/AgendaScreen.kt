@@ -34,6 +34,7 @@ fun AgendaScreen(model: AppModel, modifier: Modifier, onGo: (Tab) -> Unit) {
     val today = dayOf(now)
     var who by remember { mutableStateOf(ALL) }
     var choosing by remember { mutableStateOf<Occurrence?>(null) }
+    var battleFor by remember { mutableStateOf<Pair<String, Int>?>(null) }   // alliance, day
     val ctx = LocalContext.current
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         model.reload()
@@ -75,16 +76,22 @@ fun AgendaScreen(model: AppModel, modifier: Modifier, onGo: (Tab) -> Unit) {
             val rows = occ.filter { it.day == n }
             item(key = "day$n") {
                 SectionCard((if (n == today) "Today · " else if (n == today + 1) "Tomorrow · " else "") + dayLabel(n)) {
-                    for (k in kingdoms) {
-                        val ev = dayEvents(viewFor(s, k), n)
-                        if (ev.isEmpty()) continue
-                        if (kingdoms.size > 1) Text(kingdomTag(k), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 2.dp))
-                        for (e in ev) Hint(dayEventLabel(e), Modifier.padding(start = 8.dp))
+                    val global = globalEvents(s, n)
+                    if (global.isNotEmpty()) {
+                        GroupLabel("Global")
+                        for (e in global) EventRow(e)
                     }
-                    if (kingdoms.isNotEmpty() && rows.isNotEmpty()) Spacer(Modifier.height(6.dp))
-                    if (rows.isEmpty()) Hint("Nothing with a time.", Modifier.padding(top = 4.dp))
-                    for (o in rows) OccurrenceRow(o, colors[o.charId] ?: 0, now, zone, multi = s.characters.size > 1) { choosing = o }
+                    for (k in kingdoms) {
+                        val ev = kingdomEvents(s, k, n)
+                        if (ev.isEmpty()) continue
+                        GroupLabel(kingdomTag(k))
+                        for (e in ev) EventRow(e)
+                    }
+                    if (rows.isNotEmpty() || s.characters.isNotEmpty()) GroupLabel("Times")
+                    if (rows.isEmpty() && s.characters.isNotEmpty()) Hint("Nothing with a time.", Modifier.padding(vertical = 4.dp))
+                    for (o in rows) OccurrenceRow(o, colors[o.charId] ?: 0, now, zone, multi = s.characters.size > 1) {
+                        if (o.key == BATTLE_KEY) battleFor = o.alliance to o.day else choosing = o
+                    }
                 }
             }
         }
@@ -92,23 +99,89 @@ fun AgendaScreen(model: AppModel, modifier: Modifier, onGo: (Tab) -> Unit) {
     }
 
     choosing?.let { o -> LegionDialog(model, o) { choosing = null } }
+    battleFor?.let { (al, day) -> BattleDialog(model, al, day) { battleFor = null } }
+}
+
+/** Small accent label inside a day card: GLOBAL, #1130, TIMES. */
+@Composable
+private fun GroupLabel(text: String) {
+    Text(text.uppercase(), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
+}
+
+/** An event without a time: same layout as the time rows; the last day stands out. */
+@Composable
+private fun EventRow(e: DayEvent) {
+    val ends = e.endsToday
+    val accent = MaterialTheme.colorScheme.primary
+    Surface(Modifier.fillMaxWidth().padding(vertical = 2.dp), shape = RoundedCornerShape(8.dp),
+        color = if (ends) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.width(6.dp).fillMaxHeight().background(if (ends) accent else Color.Transparent))
+            Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(eventStatus(e), modifier = Modifier.width(96.dp), style = MaterialTheme.typography.labelLarge,
+                    fontWeight = if (ends) FontWeight.Bold else FontWeight.Normal,
+                    color = if (ends) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(withEmoji(e.emoji, e.name), modifier = Modifier.weight(1f), fontWeight = if (ends) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (ends) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
+            }
+        }
+    }
+}
+
+/** Friday Sanctuary & Fortress hours for one alliance: any of the voted slots. */
+@Composable
+private fun BattleDialog(model: AppModel, alliance: String, day: Int, onClose: () -> Unit) {
+    val key = diso(day)
+    var picked by remember { mutableStateOf(model.state.battles[alliance]?.get(key).orEmpty().toSet()) }
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { DialogTitle(BATTLE_EMOJI, "$BATTLE_TITLE · $alliance") },
+        text = {
+            Column {
+                Hint("${dayLabel(day)}. Pick the hours of your battles (the slot most voted at sign-up). One reminder per hour.")
+                Spacer(Modifier.height(6.dp))
+                for (h in BATTLE_SLOTS) {
+                    val ms = day * DAY_MS + h * 60 * MIN_MS
+                    Row(Modifier.fillMaxWidth().clickable { picked = if (h in picked) picked - h else picked + h }.padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = h in picked, onCheckedChange = { on -> picked = if (on) picked + h else picked - h })
+                        Text(fmtBoth(ms, ZoneId.systemDefault()))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                model.update("battles $alliance $key -> ${picked.sorted()}") { st ->
+                    val days = (st.battles[alliance] ?: emptyMap()).toMutableMap()
+                    if (picked.isEmpty()) days.remove(key) else days[key] = picked.sorted()
+                    // keep only recent weeks
+                    days.keys.filter { (dnum(it) ?: 0) < day - 35 }.forEach { days.remove(it) }
+                    st.copy(battles = st.battles + (alliance to days))
+                }
+                onClose()
+            }) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } },
+    )
 }
 
 @Composable
 private fun OccurrenceRow(o: Occurrence, color: Int, now: Long, zone: ZoneId, multi: Boolean, onChoose: () -> Unit) {
     val past = o.minute != null && o.atMs < now
-    val clickable = o.choice != null
+    val clickable = o.choice != null || o.key == BATTLE_KEY
     Surface(Modifier.fillMaxWidth().padding(vertical = 3.dp).alpha(if (past) 0.5f else 1f).clip(RoundedCornerShape(8.dp))
         .let { if (clickable) it.clickable(onClick = onChoose) else it },
-        shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest) {
+        shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(6.dp).fillMaxHeight().background(if (color != 0) Color(color) else Color.Transparent))
             Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.width(96.dp)) {
                     if (o.minute != null) {
-                        Text(fmtUtc(o.atMs), fontWeight = FontWeight.SemiBold)
+                        Text(fmtUtc(o.atMs), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                         Hint(fmtLocal(o.atMs, zone))
-                    } else Text("—")
+                    } else Text(if (o.kind == Kind.BATTLE_TBD) "TBD" else "—", style = MaterialTheme.typography.labelLarge)
                 }
                 Column(Modifier.weight(1f)) {
                     Text(withEmoji(o.emoji, o.title))
@@ -117,7 +190,9 @@ private fun OccurrenceRow(o: Occurrence, color: Int, now: Long, zone: ZoneId, mu
                         when (o.kind) {
                             Kind.CHOICE_PENDING -> add("legion not set — tap to choose")
                             Kind.CHOICE_NONE -> add("not playing — tap to change")
+                            Kind.BATTLE_TBD -> add("time TBD — tap to set")
                             Kind.TIMED -> if (o.choice != null) add(if (o.choice.explicit) "tap to change" else "usual legion — tap to change")
+                                else if (o.key == BATTLE_KEY) add("tap to change")
                         }
                     }
                     if (sub.isNotEmpty()) Hint(sub.joinToString(" · "))

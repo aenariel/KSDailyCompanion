@@ -46,6 +46,7 @@ class AppModel(private val ctx: Context) {
         val snapshot = state
         Thread {
             val (fresh, msg) = Store.fetchEvents(snapshot)
+            if (!msg.startsWith("Could not")) Store.setLastFetch(ctx, System.currentTimeMillis())
             Handler(Looper.getMainLooper()).post {
                 if (fresh != null) update("events update") { it.copy(shared = fresh.shared, sharedVersion = fresh.sharedVersion) }
                 if (!quiet || fresh != null) message = msg
@@ -54,6 +55,26 @@ class AppModel(private val ctx: Context) {
     }
 
     fun toast(msg: String) { message = msg }
+
+    /** Global events exactly as published, kingdom events back to their default format; dates kept. */
+    fun resetFormats() {
+        val url = state.settings.eventsUrl
+        Thread {
+            val online = Store.fetchEventsFile(url)
+            val (ver, shared) = online ?: Store.bundledShared(ctx)
+            Handler(Looper.getMainLooper()).post {
+                update("reset event formats (events v$ver, ${if (online != null) "online" else "bundled"})") { io.github.aenariel.ksdailycompanion.model.resetFormats(it, shared, ver) }
+                toast("Event formats reset (events v$ver${if (online == null) ", offline copy" else ""}). Dates kept.")
+            }
+        }.start()
+    }
+
+    fun eraseAll() {
+        Store.eraseAll(ctx)
+        reload()
+        Scheduler.replan(ctx, "erase all")
+        toast("All data erased")
+    }
 }
 
 class MainActivity : ComponentActivity() {

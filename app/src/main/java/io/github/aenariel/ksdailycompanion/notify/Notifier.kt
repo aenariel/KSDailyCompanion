@@ -135,11 +135,13 @@ object Notifier {
     private fun digest(ctx: Context, s: CompanionState, d: Due.Digest, zone: ZoneId) {
         val lines = ArrayList<String>()
         val kingdoms = s.characters.filter { it.on }.mapNotNull { s.alliances[it.alliance]?.kingdom }.distinct()
+        fun label(e: DayEvent) = dayEventLabel(e) + if (e.endsToday) " — " + eventStatus(e).lowercase() else ""
+        for (e in globalEvents(s, d.day)) lines += label(e)
         for (k in kingdoms) {
-            val ev = dayEvents(viewFor(s, k), d.day).map { dayEventLabel(it) }
+            val ev = kingdomEvents(s, k, d.day)
             if (ev.isEmpty()) continue
-            if (kingdoms.size > 1) lines += kingdomTag(k)
-            for (e in ev) lines += (if (kingdoms.size > 1) "  " else "") + e
+            lines += kingdomTag(k)
+            for (e in ev) lines += "  " + label(e)
         }
         val occ = occurrences(s, d.day, d.day)
         val merged = LinkedHashMap<String, MutableList<String>>()
@@ -148,6 +150,7 @@ object Notifier {
                 Kind.TIMED -> "${fmtBoth(o.atMs, zone)} · ${withEmoji(o.emoji, o.title)}"
                 Kind.CHOICE_PENDING -> "${withEmoji(o.emoji, o.title)}: legion not set"
                 Kind.CHOICE_NONE -> continue
+                Kind.BATTLE_TBD -> "${withEmoji(o.emoji, o.title)}: time TBD"
             }
             merged.getOrPut(label) { ArrayList() } += o.charName
         }

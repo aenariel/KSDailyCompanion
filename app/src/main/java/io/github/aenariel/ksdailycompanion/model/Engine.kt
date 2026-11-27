@@ -83,7 +83,7 @@ fun ruleHits(v: View, rule: Rule, n: Int): Boolean = when (rule.type) {
 
 // ---------------------------------------------------------------- planning
 
-enum class Kind { TIMED, CHOICE_PENDING, CHOICE_NONE }
+enum class Kind { TIMED, CHOICE_PENDING, CHOICE_NONE, BATTLE_TBD }
 
 data class ChoiceInfo(val group: ChoiceGroup, val occKey: String, val options: List<TimedItem>, val selected: String?, val explicit: Boolean)
 
@@ -100,6 +100,8 @@ data class Occurrence(
     val minute: Int?,
     val kind: Kind = Kind.TIMED,
     val choice: ChoiceInfo? = null,
+    /** The character's alliance (used by the Sanctuary/Fortress hours, which are per alliance). */
+    val alliance: String = "",
 ) {
     val atMs: Long get() = day * DAY_MS + (minute ?: 0) * MIN_MS
 }
@@ -169,6 +171,11 @@ fun occurrences(state: CompanionState, fromDay: Int, toDay: Int): List<Occurrenc
                 if (h.start != n) continue
                 val m = parseTime(ev.startTime) ?: continue
                 out += Occurrence(ch.id, label, "c:${ev.id}", ev.emoji, ev.name, n, m)
+            }
+            if (isBattleDay(n) && BATTLE_KEY !in ch.off) {
+                val hours = state.battles[ch.alliance]?.get(diso(n)).orEmpty()
+                if (hours.isEmpty()) out += Occurrence(ch.id, label, BATTLE_KEY, BATTLE_EMOJI, BATTLE_TITLE, n, null, Kind.BATTLE_TBD, alliance = ch.alliance)
+                for (hr in hours.sorted()) out += Occurrence(ch.id, label, BATTLE_KEY, BATTLE_EMOJI, BATTLE_TITLE, n, hr * 60, alliance = ch.alliance)
             }
         }
     }
@@ -247,7 +254,12 @@ fun nextFire(state: CompanionState, afterMs: Long, horizonDays: Int = 8): Long? 
 
 // ---------------------------------------------------------------- day view
 
-data class DayEvent(val key: String, val emoji: String, val name: String, val dayIdx: Int, val len: Int, val showDay: Boolean, val maxDay: Int)
+data class DayEvent(
+    val key: String, val emoji: String, val name: String, val dayIdx: Int, val len: Int, val showDay: Boolean, val maxDay: Int,
+    /** Last day of a multi-day event. */
+    val endsToday: Boolean = false,
+    val endTime: String = "",
+)
 
 /** Events running on day n in one kingdom (the agenda's eventsFor, without the "tomorrow" rows). */
 fun dayEvents(v: View, n: Int): List<DayEvent> {
@@ -255,12 +267,12 @@ fun dayEvents(v: View, n: Int): List<DayEvent> {
     for (ev in v.cycle) {
         if (!ev.on) continue
         val h = cycleHit(v, ev, n) ?: continue
-        list += DayEvent("c:${ev.id}", ev.emoji, ev.name, h.dayIdx, h.end - h.start + 1, ev.showDay, ev.maxDay)
+        list += DayEvent("c:${ev.id}", ev.emoji, ev.name, h.dayIdx, h.end - h.start + 1, ev.showDay, ev.maxDay, h.end == n && h.end > h.start, ev.endTime)
     }
     for (sp in v.special) {
         if (!sp.on) continue
         val h = specialHit(sp, n) ?: continue
-        list += DayEvent("s:${sp.id}", sp.emoji, sp.name, h.dayIdx, h.end - h.start + 1, sp.showDay, 0)
+        list += DayEvent("s:${sp.id}", sp.emoji, sp.name, h.dayIdx, h.end - h.start + 1, sp.showDay, 0, h.end == n && h.end > h.start)
     }
     val seen = HashSet<String>()
     return list.filter { seen.add(it.name) }
@@ -270,4 +282,22 @@ fun dayEventLabel(e: DayEvent): String {
     val d = if (e.maxDay > 0) minOf(e.dayIdx, e.maxDay) else e.dayIdx
     val tail = if (e.len > 1) " (day $d/${e.len})" else ""
     return withEmoji(e.emoji, e.name + tail)
+}
+
+/** Events the same in every kingdom (events.json) on day n. */
+fun globalEvents(state: CompanionState, n: Int): List<DayEvent> =
+    dayEvents(View(state.shared.anchor, state.shared.cycle, state.shared.special), n)
+
+/** A kingdom's own events on day n. */
+fun kingdomEvents(state: CompanionState, kingdom: String, n: Int): List<DayEvent> {
+    val k = state.kingdoms[kingdom] ?: return emptyList()
+    val ids = state.shared.cycle.map { it.id }.toSet()
+    return dayEvents(View(state.shared.anchor, k.cycle.filter { it.id !in ids }, k.special), n)
+}
+
+/** Left column of an event row: "ENDS TODAY", "ENDS 12:00 UTC", "day 3/7" or "today". */
+fun eventStatus(e: DayEvent): String = when {
+    e.endsToday -> parseTime(e.endTime)?.let { "ENDS " + timeString(it) } ?: "ENDS TODAY"
+    e.len > 1 -> "day ${if (e.maxDay > 0) minOf(e.dayIdx, e.maxDay) else e.dayIdx}/${e.len}"
+    else -> "today"
 }

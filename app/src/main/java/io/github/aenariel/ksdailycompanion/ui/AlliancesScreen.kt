@@ -35,6 +35,8 @@ fun AlliancesScreen(model: AppModel, modifier: Modifier) {
                     Text("$name · ${kingdomTag(a.kingdom)}", fontWeight = FontWeight.SemiBold)
                     val traps = a.timed.filter { it.on && it.group == BEAR_GROUP }
                     if (traps.isNotEmpty()) Hint("🐻 " + traps.joinToString(" · ") { Notifier.shortLabel(it.label) + " " + hhmm(it.time) })
+                    val vv = a.timed.filter { it.on && it.group == VIKING_GROUP && it.time.isNotBlank() }
+                    if (vv.isNotEmpty()) Hint("🪓 " + vv.joinToString(" · ") { it.label + " " + hhmm(it.time) })
                     for ((g, items) in a.timed.filter { it.on && it.group in choiceNames }.groupBy { it.group })
                         Hint(withEmoji(items[0].emoji, items.joinToString(" · ") { legionName(it) + " " + hhmm(it.time) }))
                     if (users.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
@@ -55,7 +57,7 @@ fun AlliancesScreen(model: AppModel, modifier: Modifier) {
         val users = s.characters.filter { it.alliance == name }
         ConfirmDialog("Delete $name?", "Its times are removed.", "Delete",
             error = if (users.isEmpty()) null else "Move ${users.joinToString { it.name }} to another alliance first.",
-            onConfirm = { if (users.isEmpty()) { model.update("delete alliance $name") { it.copy(alliances = it.alliances - name) }; deleting = null } },
+            onConfirm = { if (users.isEmpty()) { model.update("delete alliance $name") { it.copy(alliances = it.alliances - name, battles = it.battles - name) }; deleting = null } },
             onClose = { deleting = null })
     }
 }
@@ -91,7 +93,7 @@ private fun AllianceDialog(model: AppModel, original: String?, start: Alliance, 
         title = {
             DialogTitle(Tab.ALLIANCES.icon, original ?: "New alliance", onDelete = if (original == null) null else ({
                 if (users.isNotEmpty()) error = "Move ${users.joinToString { it.name }} to another alliance first."
-                else { model.update("delete alliance $original") { it.copy(alliances = it.alliances - original) }; onClose() }
+                else { model.update("delete alliance $original") { it.copy(alliances = it.alliances - original, battles = it.battles - original) }; onClose() }
             }))
         },
         text = {
@@ -120,6 +122,14 @@ private fun AllianceDialog(model: AppModel, original: String?, start: Alliance, 
                     }
                 }
 
+                SectionCard("🪓 $VIKING_GROUP") {
+                    val vv = a.timed.filter { it.group == VIKING_GROUP }
+                    if (vv.isEmpty()) TextButton(onClick = { a = a.copy(timed = a.timed + vikingItems()) }) { Text("Add Viking Vengeance times") }
+                    for (t in vv) ValueRow(t.label + if (t.on) "" else " (off)", if (t.time.isBlank()) "not set" else hhmm(t.time) + " UTC",
+                        if (t.time.isBlank()) "no reminder until set" else timePreview(t.time, model.now).substringAfter(" · ")) { editingTime = t }
+                    Hint("Alliance event on days 1 and 3 of Viking Vengeance. Changing Day 1 also changes Day 3 when they were the same.")
+                }
+
                 for (g in s.choiceGroups) {
                     val items = a.timed.filter { it.group == g.group }
                     val emoji = displayEmoji(items.firstOrNull()?.emoji ?: v.event(g.ev)?.emoji ?: "")
@@ -135,7 +145,7 @@ private fun AllianceDialog(model: AppModel, original: String?, start: Alliance, 
 
                 SectionCard("Other times") {
                     Hint("Anything else at a fixed hour: every N days, on weekdays, or on a day of a game event.")
-                    for (t in a.timed.filter { it.group != BEAR_GROUP && it.group !in choiceNames }) ItemRow(t, v, model.now) { editingOther = t }
+                    for (t in a.timed.filter { it.group != BEAR_GROUP && it.group != VIKING_GROUP && it.group !in choiceNames }) ItemRow(t, v, model.now) { editingOther = t }
                     TextButton(onClick = {
                         editingOther = TimedItem(newId(), true, "", "", "12:00 UTC", "", Rule("every", date = diso(today), every = 1))
                     }) { Text("Add a time") }
@@ -149,7 +159,8 @@ private fun AllianceDialog(model: AppModel, original: String?, start: Alliance, 
                     val map = LinkedHashMap<String, Alliance>()
                     for ((k, x) in st.alliances) if (k == original) map[n] = a else map[k] = x
                     if (original == null) map[n] = a
-                    st.copy(alliances = map, characters = st.characters.map { if (original != null && it.alliance == original) it.copy(alliance = n) else it })
+                    val battles = if (original != null && original != n && original in st.battles) st.battles - original + (n to st.battles.getValue(original)) else st.battles
+                    st.copy(alliances = map, battles = battles, characters = st.characters.map { if (original != null && it.alliance == original) it.copy(alliance = n) else it })
                 }
                 onClose()
             }) { Text("Save") }
@@ -157,7 +168,14 @@ private fun AllianceDialog(model: AppModel, original: String?, start: Alliance, 
         dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } },
     )
 
-    editingTime?.let { t -> TimeDialog(model, t, onSave = { replace(it) }, onClose = { editingTime = null }) }
+    editingTime?.let { t ->
+        TimeDialog(model, t, allowEmpty = t.group == VIKING_GROUP, onSave = { x ->
+            // Day 3 of Viking Vengeance follows Day 1 when they had the same hour
+            val follow = if (x.id == "vv1") a.timed.firstOrNull { it.id == "vv3" && normTime(it.time) == normTime(t.time) } else null
+            replace(x)
+            if (follow != null) replace(follow.copy(time = x.time))
+        }, onClose = { editingTime = null })
+    }
     if (editingDays) a.timed.firstOrNull { it.group == BEAR_GROUP }?.let { first ->
         TrapDaysDialog(first.rule, today, onSave = { r -> a = a.copy(timed = a.timed.map { if (it.group == BEAR_GROUP) it.copy(rule = r) else it }) }, onClose = { editingDays = false })
     }
@@ -172,17 +190,21 @@ private fun AllianceDialog(model: AppModel, original: String?, start: Alliance, 
 
 /** Hour of one Bear Trap or legion. */
 @Composable
-private fun TimeDialog(model: AppModel, start: TimedItem, onSave: (TimedItem) -> Unit, onClose: () -> Unit) {
-    var text by remember { mutableStateOf(hhmm(start.time)) }
+private fun TimeDialog(model: AppModel, start: TimedItem, allowEmpty: Boolean = false, onSave: (TimedItem) -> Unit, onClose: () -> Unit) {
+    var text by remember { mutableStateOf(if (start.time.isBlank()) "" else hhmm(start.time)) }
     var on by remember { mutableStateOf(start.on) }
-    val time = normTime(text)
+    val time = if (allowEmpty && text.isBlank()) "" else normTime(text)
     AlertDialog(
         onDismissRequest = onClose,
-        title = { DialogTitle(displayEmoji(start.emoji), Notifier.shortLabel(start.label)) },
+        title = { DialogTitle(displayEmoji(start.emoji), if (start.group == VIKING_GROUP) "Viking Vengeance · ${start.label}" else Notifier.shortLabel(start.label)) },
         text = {
             Column {
                 OutlinedTextField(text, { text = it }, label = { Text("Time (UTC)") }, singleLine = true, isError = time == null, modifier = Modifier.fillMaxWidth())
-                Hint(if (time == null) "Type an hour, e.g. 20 or 20:30" else "Today: " + timePreview(time, model.now))
+                Hint(when {
+                    time == null -> "Type an hour, e.g. 20 or 20:30"
+                    time.isEmpty() -> "Not set: no reminder"
+                    else -> "Today: " + timePreview(time, model.now)
+                })
                 SwitchRow("Active", on) { on = it }
             }
         },

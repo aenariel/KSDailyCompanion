@@ -112,7 +112,7 @@ private fun CharacterDialog(model: AppModel, start: Character, onClose: () -> Un
                             onItems.size == 1 -> onItems[0].id
                             else -> CUSTOM
                         }
-                        val opts = items.map { it.id to "${Notifier.shortLabel(it.label)} · ${normTime(it.time) ?: it.time}" } +
+                        val opts = items.map { it.id to "${Notifier.shortLabel(it.label)} · ${normTime(it.time) ?: "not set"}" } +
                             listOf(ALL_ITEMS to "All", NO_ITEMS to "None") + (if (current == CUSTOM) listOf(CUSTOM to "Some") else emptyList())
                         Picker(withEmoji(items[0].emoji, group), current, opts, Modifier.padding(vertical = 2.dp)) { v ->
                             if (v != CUSTOM) {
@@ -129,6 +129,7 @@ private fun CharacterDialog(model: AppModel, start: Character, onClose: () -> Un
                     for (t in timed.filter { it.group !in groups.keys }) rows += Triple("t:${t.id}", withEmoji(t.emoji, t.label), normTime(t.time) ?: t.time)
                     for (g in s.choiceGroups) if (al.timed.any { it.on && it.group == g.group }) rows += Triple("g:${g.group}", g.group, "legion battles and registration")
                     for (ev in viewFor(s, al.kingdom).cycle.filter { it.on && it.startTime.isNotBlank() }) rows += Triple("c:${ev.id}", withEmoji(ev.emoji, ev.name), ev.startTime)
+                    rows += Triple(BATTLE_KEY, withEmoji(BATTLE_EMOJI, BATTLE_TITLE), "Fridays; set the hours in the agenda")
                     for ((key, label, sub) in rows) SwitchRow(label, key !in c.off, sub) { on -> c = c.copy(off = if (on) c.off - key else c.off + key) }
                 }
             }

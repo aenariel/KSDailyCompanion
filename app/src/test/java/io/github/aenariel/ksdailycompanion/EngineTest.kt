@@ -15,6 +15,7 @@ class EngineTest {
             CycleEvent("swordland", "🏯", "Swordland Showdown", 0, 7, 14, on = false),
             CycleEvent("triclash", "🏤", "Tri-Alliance Clash", 14, 6, 28, on = false),
             CycleEvent("castle", "🌟 🏰", "Castle Battle", 12, 1, 28, startTime = "12 UTC"),
+            CycleEvent("vikings", "\uE041", "Viking Vengeance", 8, 3, 14),
         ),
         listOf(SpecialEvent("fantasy1", "✨", "Fantasy Theater", "2026-11-09", "2026-11-15")),
     )
@@ -160,5 +161,55 @@ class EngineTest {
         assertEquals(mapOf(groupKey(BEAR_GROUP) to listOf(30), "c:castle" to listOf(60)), m.settings.leads)
         assertEquals(m, withGroupLeads(m))
         assertTrue(freshState(shared, 1).alliances.isEmpty() && freshState(shared, 1).kingdoms.isEmpty())
+    }
+
+    @Test fun globalKingdomAndEnds() {
+        val st = base.copy(kingdoms = mapOf("1130" to defaultKingdom("old")), alliances = mapOf("Ffs" to defaultAlliance("1130")))
+        val n = d("2026-11-15")                            // last day of Alliance Brawl (ends 12 UTC)
+        val g = globalEvents(st, n)
+        assertEquals("ENDS 12:00 UTC", eventStatus(g.first { it.name == "Alliance Brawl" }))
+        assertEquals("day 7/7", eventStatus(g.first { it.name == "Fantasy Theater" }).let { if (it.startsWith("ENDS")) "day 7/7" else it })
+        assertEquals("ENDS TODAY", eventStatus(g.first { it.name == "Fantasy Theater" }))
+        val desert = kingdomEvents(st, "1130", d("2026-11-27")).first { it.key == "c:desert" }
+        assertEquals("ENDS TODAY", eventStatus(desert))
+        assertEquals("day 1/3", eventStatus(kingdomEvents(st, "1130", d("2026-11-25")).first { it.key == "c:desert" }))
+        assertTrue(kingdomEvents(st, "1130", d("2026-11-27")).none { it.name == "Alliance Brawl" })   // globals only once
+    }
+
+    @Test fun battlesAndVikings() {
+        val st0 = base.copy(characters = listOf(Character("a", "Pingu", "My alliance")))
+        val fri = d("2026-11-27")
+        val tbd = occurrences(st0, fri, fri).filter { it.key == BATTLE_KEY }
+        assertEquals(listOf(Kind.BATTLE_TBD), tbd.map { it.kind })
+        assertTrue(occurrences(st0, d("2026-11-26"), d("2026-11-26")).none { it.key == BATTLE_KEY })
+        val st = st0.copy(battles = mapOf("My alliance" to mapOf("2026-11-27" to listOf(14, 3))))
+        assertEquals(listOf(3 * 60, 14 * 60), occurrences(st, fri, fri).filter { it.key == BATTLE_KEY }.map { it.minute })
+        val r = dueBetween(st, ms("2026-11-27", "00:00"), ms("2026-11-27", "23:59")).filterIsInstance<Due.Reminder>().filter { it.occ.key == BATTLE_KEY }
+        // default leads 12h and 2h: 03:00 - 2h, 14:00 - 12h, 14:00 - 2h (03:00 - 12h falls on Thursday)
+        assertEquals(listOf(ms("2026-11-27", "01:00"), ms("2026-11-27", "02:00"), ms("2026-11-27", "12:00")), r.map { it.fireAt })
+        // Vikings: no hour = no occurrence; Day 1 at 19:00 on the first day of Viking Vengeance (2026-11-17)
+        assertTrue(occurrences(st0, d("2026-11-17"), d("2026-11-19")).none { it.key == groupKey(VIKING_GROUP) })
+        val al = st0.alliances["My alliance"]!!
+        val st2 = st0.copy(alliances = mapOf("My alliance" to al.copy(timed = al.timed.map { if (it.id == "vv1") it.copy(time = "19:00 UTC") else it })))
+        val vv = occurrences(st2, d("2026-11-17"), d("2026-11-19")).filter { it.key == groupKey(VIKING_GROUP) }
+        assertEquals(listOf(d("2026-11-17") to 19 * 60), vv.map { it.day to it.minute })
+    }
+
+    @Test fun kingdomNamesAndReset() {
+        assertEquals("1130", normKingdom("#1130")); assertEquals("1130", normKingdom("K1130")); assertEquals("My kingdom", normKingdom("My kingdom"))
+        val st = base.copy(kingdoms = mapOf("K1130" to defaultKingdom("old")), alliances = mapOf("Ffs" to defaultAlliance("K1130")))
+        val r = withKingdomNames(st)
+        assertEquals(setOf("1130"), r.kingdoms.keys); assertEquals("1130", r.alliances["Ffs"]!!.kingdom)
+        // Reset formats: a shortened Fishing (2 days every 14) goes back to 3 every 28, keeping its start date
+        val k = r.kingdoms["1130"]!!
+        val edited = r.copy(kingdoms = mapOf("1130" to k.copy(cycle = k.cycle.map { if (it.id == "fishing") it.copy(len = 2, every = 14, start = 9, name = "Fish") else it } +
+            CycleEvent("mine", "", "My event", 3, 1, 7))))
+        val reset = resetFormats(edited, shared, 2).kingdoms["1130"]!!
+        val fishing = reset.cycle.first { it.id == "fishing" }
+        assertEquals(listOf(3, 28, 9), listOf(fishing.len, fishing.every, fishing.start))
+        assertEquals("Fishing Tournament", fishing.name)
+        assertEquals("Champion's Way", reset.cycle.first { it.id == "desert" }.name)
+        assertTrue(reset.cycle.any { it.id == "mine" })
+        assertTrue(withVikings(base).alliances.values.all { a -> a.timed.count { it.group == VIKING_GROUP } == 2 })
     }
 }

@@ -47,6 +47,7 @@ private fun leadKeys(s: CompanionState): List<Pair<String, String>> {
     val choice = s.choiceGroups.map { it.group }.toSet()
     out[groupKey(BEAR_GROUP)] = "🐻 $BEAR_GROUP"
     for (g in s.choiceGroups) out["g:${g.group}"] = g.group
+    out[BATTLE_KEY] = withEmoji(BATTLE_EMOJI, BATTLE_TITLE)
     for (a in s.alliances.values) for (t in a.timed) {
         if (t.group in choice) continue
         if (t.group.isNotBlank()) out.putIfAbsent(groupKey(t.group), withEmoji(t.emoji, t.group))
@@ -157,6 +158,13 @@ fun SettingsScreen(model: AppModel, modifier: Modifier) {
             }
         }
 
+        SectionCard("Reset", key = "set-reset", defaultOpen = false) {
+            ValueRow("Reset event formats", "Reset",
+                "Global events exactly as published; each kingdom's events back to their default length, period and switches. Dates, alliances and characters stay.") { dialog = "reset" }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            ValueRow("Erase all data", "Erase", "Characters, alliances, kingdoms, picks and settings. Export first if you may want them back.") { dialog = "erase" }
+        }
+
         SectionCard("Log", key = "set-log", defaultOpen = false) {
             Row {
                 TextButton(onClick = { showLog = !showLog }) { Text(if (showLog) "Hide log" else "Show log") }
@@ -198,6 +206,10 @@ fun SettingsScreen(model: AppModel, modifier: Modifier) {
             }
         }
         d == "paste" -> PasteDialog({ dialog = null }) { importText(it); dialog = null }
+        d == "reset" -> ConfirmDialog("Reset event formats?", "Global events are replaced by the published list; kingdom events get their default format. Dates are kept.", "Reset",
+            onConfirm = { model.resetFormats(); dialog = null }, onClose = { dialog = null })
+        d == "erase" -> ConfirmDialog("Erase all data?", "Everything in the app is removed. This cannot be undone.", "Erase",
+            onConfirm = { model.eraseAll(); dialog = null }, onClose = { dialog = null })
     }
 }
 

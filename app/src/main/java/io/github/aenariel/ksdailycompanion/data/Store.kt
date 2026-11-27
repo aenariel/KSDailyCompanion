@@ -34,6 +34,8 @@ object Store {
             s = s.copy(shared = Codec.mergeShared(s.shared, bundled), sharedVersion = bundledVer)
         }
         withGroupLeads(s).let { if (it != s) { Log.i("Moved per-item reminder times to their groups"); s = it } }
+        withKingdomNames(s).let { if (it != s) { Log.i("Renamed kingdoms to plain numbers: ${it.kingdoms.keys}"); s = it } }
+        withVikings(s).let { if (it != s) { Log.i("Added Viking Vengeance times (not set) to the alliances"); s = it } }
         withColors(s).let { if (it != s) { Log.i("Gave colours to ${s.characters.count { c -> c.color == 0 }} characters"); s = it } }
         Log.i("Loaded state: ${s.characters.size} characters, ${s.alliances.size} alliances, ${s.kingdoms.size} kingdoms, events v${s.sharedVersion} (${System.currentTimeMillis() - t0} ms)")
         cached = s
@@ -93,6 +95,37 @@ object Store {
             Log.w("Events fetch failed: ${e.javaClass.simpleName}: ${e.message}")
             null to "Could not reach the events file (offline?)"
         }
+    }
+
+    /** Blocking: the published events file as it is (for a reset), or null when offline. */
+    fun fetchEventsFile(url: String): Pair<Int, Shared>? = try {
+        val c = URL(url).openConnection() as HttpURLConnection
+        c.connectTimeout = 10_000; c.readTimeout = 10_000; c.useCaches = false
+        c.setRequestProperty("Cache-Control", "no-cache")
+        if (c.responseCode != 200) { Log.w("Events file: HTTP ${c.responseCode}"); null }
+        else Codec.eventsFile(c.inputStream.bufferedReader().use { it.readText() })
+    } catch (e: Exception) { Log.w("Events file fetch failed: ${e.javaClass.simpleName}: ${e.message}"); null }
+
+    /** Background check of the published global events, at most every 12 h. */
+    fun syncEventsIfDue(ctx: Context, reason: String) {
+        val now = System.currentTimeMillis()
+        val last = ctx.getSharedPreferences(PREFS, 0).getLong("lastFetch", 0L)
+        if (now - last < 12 * 3_600_000L) return
+        Log.i("Events sync ($reason): last check ${if (last == 0L) "never" else fmtUtc(last) + " " + dayLabel(dayOf(last))}")
+        val (fresh, msg) = fetchEvents(load(ctx))
+        if (fresh != null) save(ctx, fresh)
+        if (!msg.startsWith("Could not")) setLastFetch(ctx, now)
+    }
+
+    fun setLastFetch(ctx: Context, ms: Long) { ctx.getSharedPreferences(PREFS, 0).edit().putLong("lastFetch", ms).apply() }
+
+    /** Removes everything: characters, alliances, kingdoms, picks and settings. */
+    @Synchronized fun eraseAll(ctx: Context) {
+        val (ver, shared) = bundledShared(ctx)
+        cached = null
+        save(ctx, freshState(shared, ver))
+        ctx.getSharedPreferences(PREFS, 0).edit().clear().apply()
+        Log.i("Erased all data")
     }
 
     // Runtime values that are not part of the user's data

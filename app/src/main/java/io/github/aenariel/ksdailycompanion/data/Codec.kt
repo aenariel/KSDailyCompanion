@@ -80,6 +80,13 @@ object Codec {
 
     private fun intList(a: JSONArray?): List<Int>? = a?.let { (0 until it.length()).map { i -> it.optInt(i) } }
 
+    private fun battlesFrom(o: JSONObject?): Map<String, Map<String, List<Int>>> {
+        if (o == null) return emptyMap()
+        val out = LinkedHashMap<String, Map<String, List<Int>>>()
+        o.keys().forEach { al -> o.optJSONObject(al)?.let { d -> out[al] = d.keys().asSequence().associateWith { k -> intList(d.optJSONArray(k)) ?: emptyList() } } }
+        return out
+    }
+
     fun settings(o: JSONObject?): Settings {
         if (o == null) return Settings()
         val leads = HashMap<String, List<Int>>()
@@ -118,6 +125,7 @@ object Codec {
             picks = picks,
             choiceGroups = groups.ifEmpty { DEFAULT_CHOICE_GROUPS },
             settings = settings(o.optJSONObject("settings")),
+            battles = battlesFrom(o.optJSONObject("battles")),
         )
     }
 
@@ -129,6 +137,7 @@ object Codec {
         .put("picks", JSONObject().also { o -> s.picks.forEach { (k, v) -> o.put(k, strMap(v)) } })
         .put("choiceGroups", arr(s.choiceGroups.map(::choice)))
         .put("settings", settings(s.settings))
+        .put("battles", JSONObject().also { o -> s.battles.forEach { (al, days) -> o.put(al, JSONObject().also { d -> days.forEach { (k, v) -> d.put(k, arr(v)) } }) } })
 
     /** events.json of KSDailyAgenda: {version, shared:{anchor, cycle, special}}. */
     fun eventsFile(text: String): Pair<Int, Shared>? = try {
@@ -160,7 +169,7 @@ object Codec {
             "ks-agenda-all" -> {
                 val st = o.optJSONObject("state") ?: throw IllegalArgumentException("Agenda backup without state")
                 val schema = st.optInt("schema")
-                if (schema != 15) Log.w("Agenda backup schema $schema (this app reads 15); importing what matches")
+                if (schema !in 15..17) Log.w("Agenda backup schema $schema (this app reads 15-17); importing what matches")
                 val ks = LinkedHashMap(cur.kingdoms)
                 st.optJSONObject("kingdoms")?.let { k -> k.keys().forEach { n -> k.optJSONObject(n)?.let { ks[n] = kingdom(it) } } }
                 val al = LinkedHashMap(cur.alliances)
@@ -171,7 +180,7 @@ object Codec {
                 val sv = st.optInt("sharedVersion")
                 val incoming = st.optJSONObject("shared")
                 if (incoming != null && sv > ver) { sh = mergeShared(cur.shared, shared(incoming)); ver = sv }
-                val next = cleanDefaults(cur.copy(kingdoms = ks, alliances = al, shared = sh, sharedVersion = ver))
+                val next = withVikings(withKingdomNames(cleanDefaults(cur.copy(kingdoms = ks, alliances = al, shared = sh, sharedVersion = ver))))
                 return ImportResult(next, "Imported $n alliances and ${st.optJSONObject("kingdoms")?.length() ?: 0} kingdoms from the agenda")
             }
             "ks-agenda" -> {
@@ -182,7 +191,7 @@ object Codec {
                 o.optJSONObject("k")?.let { ks[kName] = kingdom(it) }
                 val al = LinkedHashMap(cur.alliances)
                 al[aName] = legionsOn(alliance(a), cur).copy(kingdom = kName)
-                return ImportResult(cleanDefaults(cur.copy(kingdoms = ks, alliances = al)), "Imported alliance $aName ($kName)")
+                return ImportResult(withVikings(withKingdomNames(cleanDefaults(cur.copy(kingdoms = ks, alliances = al)))), "Imported alliance $aName (${kingdomTag(normKingdom(kName))})")
             }
             else -> throw IllegalArgumentException("Unknown file type: expected a KSCompanion export or a KSDailyAgenda backup")
         }

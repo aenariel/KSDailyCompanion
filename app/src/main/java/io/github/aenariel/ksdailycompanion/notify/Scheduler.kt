@@ -64,7 +64,18 @@ object Scheduler {
 class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
         Log.init(ctx)
-        Scheduler.fire(ctx, intent.action ?: "alarm")
+        // Network for the events check: off the main thread, keeping the broadcast alive until done
+        val pending = goAsync()
+        Thread {
+            try {
+                Scheduler.fire(ctx, intent.action ?: "alarm")
+                Store.syncEventsIfDue(ctx, "alarm")
+            } catch (e: Exception) {
+                Log.e("Alarm handling failed", e)
+            } finally {
+                pending.finish()
+            }
+        }.start()
     }
 }
 

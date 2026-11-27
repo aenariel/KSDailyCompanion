@@ -14,6 +14,12 @@ with reminder times you choose (e.g. 12 h and 2 h before). Everything stays on t
 - Each character shows as `Name (Tag, #kingdom)` with its own colour. Game-only icons (private-use characters)
   are shown as emoji in the app.
 - Optional **daily summary** notification with the day's events.
+- **Viking Vengeance**: alliance event hours on days 1 and 3 (set per alliance; no reminder until set).
+- **Sanctuary & Fortress** battles every Friday: pick the alliance's hours among the voted slots (3, 9, 13, 14, 17 UTC)
+  from the agenda; shown as "time TBD" until then.
+- **Agenda**: global events once, then each kingdom's own events, then the times; the last day of an event stands out.
+- **Settings → Reset**: reset event formats (global list as published, kingdom events to their default format,
+  dates kept) or erase all data.
 
 ## Install
 
@@ -26,7 +32,8 @@ with reminder times you choose (e.g. 12 h and 2 h before). Everything stays on t
 Same model as [KSDailyAgenda](https://github.com/aenariel/KSDailyAgenda):
 
 - The fixed 28-day cycle comes from `https://aenariel.github.io/KSDailyAgenda/events.json`
-  (checked when the app opens; a bundled copy in `app/src/main/assets/events.json` is used offline).
+  (checked when the app opens and in the background at most every 12 h; a bundled copy in
+  `app/src/main/assets/events.json` is used offline).
   Bump `version` there and the app picks it up, keeping each user's on/off choices.
 - Rules are the agenda's: `every` (date + every N days), `event` (event id, day from..to, `unless`), `weekday`, `date`.
   `model/Engine.kt` is a direct port of `cycleHit` / `ruleHits`; `EngineTest` checks it against known dates.

@@ -119,6 +119,8 @@ data class CompanionState(
     val picks: Map<String, Map<String, String>> = emptyMap(),
     val choiceGroups: List<ChoiceGroup> = DEFAULT_CHOICE_GROUPS,
     val settings: Settings = Settings(),
+    /** Sanctuary/Fortress battle hours per alliance and Friday: alliance -> (yyyy-mm-dd -> UTC hours). */
+    val battles: Map<String, Map<String, List<Int>>> = emptyMap(),
 )
 
 const val SCHEMA = 1
@@ -132,8 +134,7 @@ val DEFAULT_CHOICE_GROUPS = listOf(
 
 /**
  * Kingdom-specific events, from the agenda's allDefaultEvents() (the shared ones come from events.json).
- * Unlike the agenda, Mystic Divination does not replace the Fishing Tournament: Gen 4+ only turns
- * Desert Trial into Champion's Way (and Mystic Divination starts switched on).
+ * Fishing Tournament and Mystic Divination run in every kingdom; Gen 4+ only turns Desert Trial into Champion's Way.
  */
 fun defaultKingdom(variant: String): Kingdom {
     val old = variant == "old"
@@ -142,7 +143,7 @@ fun defaultKingdom(variant: String): Kingdom {
         cycle = listOf(
             CycleEvent("fishing", "🎣", "Fishing Tournament", 1, 3, 28),
             desertEvent(old, CycleEvent("desert", "", "", 2, 3, 14)),
-            CycleEvent("divination", "🔮", "Mystic Divination", 4, 2, 28, on = old),
+            CycleEvent("divination", "🔮", "Mystic Divination", 4, 2, 28),
             CycleEvent("cesares", "👹", "Cesares Fury", 12, 3, 28),
         ),
     )
@@ -167,8 +168,62 @@ fun defaultAlliance(kingdom: String): Alliance = Alliance(
     listOf(
         TimedItem("trap1", true, "🐻", "Trap 1", "20 UTC", BEAR_GROUP, Rule("every", date = "2026-11-12", every = 2)),
         TimedItem("trap2", true, "🐻", "Trap 2", "12 UTC", BEAR_GROUP, Rule("every", date = "2026-11-12", every = 2)),
-    ) + defaultLegionTimes(),
+    ) + defaultLegionTimes() + vikingItems(),
 )
+
+const val VIKING_GROUP = "Viking Vengeance"
+
+/** Alliance event on days 1 and 3 of Viking Vengeance; no hour until the user sets one. */
+fun vikingItems(): List<TimedItem> = listOf(
+    TimedItem("vv1", true, "🪓", "Day 1", "", VIKING_GROUP, Rule("event", ev = "vikings", from = 1, to = 1)),
+    TimedItem("vv3", true, "🪓", "Day 3", "", VIKING_GROUP, Rule("event", ev = "vikings", from = 3, to = 3)),
+)
+
+/** Adds the Viking Vengeance items to alliances saved before they existed. */
+fun withVikings(s: CompanionState): CompanionState {
+    if (s.alliances.values.all { a -> a.timed.any { it.group == VIKING_GROUP } }) return s
+    return s.copy(alliances = LinkedHashMap(s.alliances.mapValues { (_, a) -> if (a.timed.any { it.group == VIKING_GROUP }) a else a.copy(timed = a.timed + vikingItems()) }))
+}
+
+/** Sanctuary & Fortress battles: every Friday, at the slot most voted at sign-up. */
+const val BATTLE_KEY = "b:sanctuary"
+const val BATTLE_TITLE = "Sanctuary & Fortress"
+const val BATTLE_EMOJI = "🏰"
+val BATTLE_SLOTS = listOf(3, 9, 13, 14, 17)
+fun isBattleDay(n: Int): Boolean = wday(n) == 4
+
+/** "#1130", "K1130", " 1130 " -> "1130"; other names unchanged. */
+fun normKingdom(name: String): String = Regex("^\\s*[#Kk]?\\s*(\\d+)\\s*$").find(name)?.groupValues?.get(1) ?: name
+
+/** Renames kingdoms like "K1130" or "#1130" to "1130" (and the alliances that use them). */
+fun withKingdomNames(s: CompanionState): CompanionState {
+    if (s.kingdoms.keys.all { normKingdom(it) == it }) return s
+    val ks = LinkedHashMap<String, Kingdom>()
+    val renamed = HashMap<String, String>()
+    for ((name, k) in s.kingdoms) {
+        val n = normKingdom(name)
+        val target = if (n != name && n !in s.kingdoms && n !in ks) n else name
+        ks[target] = k
+        if (target != name) renamed[name] = target
+    }
+    return s.copy(kingdoms = ks, alliances = LinkedHashMap(s.alliances.mapValues { (_, a) -> renamed[a.kingdom]?.let { a.copy(kingdom = it) } ?: a }))
+}
+
+/**
+ * Resets event formats to the published ones: global events become [shared] exactly; each kingdom's default
+ * events get the default name, length, period and switches back, keeping their dates. Custom events stay.
+ */
+fun resetFormats(s: CompanionState, shared: Shared, version: Int): CompanionState {
+    val kingdoms = LinkedHashMap<String, Kingdom>()
+    for ((name, k) in s.kingdoms) {
+        val defs = withVariant(defaultKingdom(k.variant), k.variant == "old").cycle
+        val ids = defs.map { it.id }.toSet()
+        val mine = k.cycle.associateBy { it.id }
+        val cycle = defs.map { d -> mine[d.id]?.let { d.copy(start = mod(it.start, maxOf(1, d.every))) } ?: d } + k.cycle.filter { it.id !in ids }
+        kingdoms[name] = k.copy(cycle = cycle)
+    }
+    return s.copy(shared = shared, sharedVersion = version, kingdoms = kingdoms)
+}
 
 /** First run: no kingdom, alliance or character; the user creates them. */
 fun freshState(shared: Shared, sharedVersion: Int): CompanionState = CompanionState(
