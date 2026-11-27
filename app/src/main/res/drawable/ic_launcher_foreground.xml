@@ -1,8 +1,58 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Generated from the KSDailyCompanion icon master: penguin king with a bell. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <group android:translateX="30" android:translateY="30" android:scaleX="2" android:scaleY="2">
-        <path android:fillColor="#FF3A2A00"
-            android:pathData="M12,22c1.1,0 2,-0.9 2,-2h-4c0,1.1 0.9,2 2,2zM18,16v-5c0,-3.07 -1.64,-5.64 -4.5,-6.32V4c0,-0.83 -0.67,-1.5 -1.5,-1.5s-1.5,0.67 -1.5,1.5v0.68C7.63,5.36 6,7.92 6,11v5l-2,2v1h16v-1l-2,-2z" />
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <group android:translateX="54" android:translateY="54"
+        android:scaleX="0.68" android:scaleY="0.68">
+        <group android:rotation="15" android:pivotX="-25" android:pivotY="16">
+            <path android:pathData="M-31,16 a6,14 0 1,0 12,0 a6,14 0 1,0 -12,0 Z"
+                android:fillColor="#FF1E293B" />
+        </group>
+        <path android:pathData="M-25,14 a25,30 0 1,0 50,0 a25,30 0 1,0 -50,0 Z"
+                android:fillColor="#FF1E293B" />
+        <path android:pathData="M-19,-12 a19,19 0 1,0 38,0 a19,19 0 1,0 -38,0 Z"
+                android:fillColor="#FF1E293B" />
+        <path android:pathData="M-16,20 a16,21 0 1,0 32,0 a16,21 0 1,0 -32,0 Z"
+                android:fillColor="#FFF8FAFC"
+                android:strokeColor="#FFFBBF24"
+                android:strokeWidth="2.5"
+                android:strokeLineJoin="round" />
+        <path android:pathData="M-12.5,-15 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0 Z"
+                android:fillColor="#FFF8FAFC" />
+        <path android:pathData="M3.5,-15 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0 Z"
+                android:fillColor="#FFF8FAFC" />
+        <path android:pathData="M-9.1,-15 a1.6,1.6 0 1,0 3.2,0 a1.6,1.6 0 1,0 -3.2,0 Z"
+                android:fillColor="#FF0F172A" />
+        <path android:pathData="M5.9,-15 a1.6,1.6 0 1,0 3.2,0 a1.6,1.6 0 1,0 -3.2,0 Z"
+                android:fillColor="#FF0F172A" />
+        <path android:pathData="M-6,-7 a6,3 0 1,0 12,0 a6,3 0 1,0 -12,0 Z"
+                android:fillColor="#FFDC2626" />
+        <path android:pathData="M-16,43 a7,3 0 1,0 14,0 a7,3 0 1,0 -14,0 Z"
+                android:fillColor="#FFF97316" />
+        <path android:pathData="M2,43 a7,3 0 1,0 14,0 a7,3 0 1,0 -14,0 Z"
+                android:fillColor="#FFF97316" />
+        <group android:rotation="-14" android:pivotX="-2" android:pivotY="-32">
+            <path android:pathData="M-14,-27 L-14,-40 L-8,-33 L-2,-43 L4,-33 L10,-40 L10,-27 Z"
+                android:fillColor="#FFFBBF24"
+                android:strokeColor="#FF92400E"
+                android:strokeWidth="1"
+                android:strokeLineJoin="round" />
+        </group>
+        <group android:rotation="-35" android:pivotX="24" android:pivotY="2">
+            <path android:pathData="M18,2 a6,13 0 1,0 12,0 a6,13 0 1,0 -12,0 Z"
+                android:fillColor="#FF1E293B" />
+        </group>
+        <path android:pathData="M20,-13 Q20,-29 28,-29 Q36,-29 36,-13 L38,-11 L18,-11 Z"
+                android:fillColor="#FFFBBF24"
+                android:strokeColor="#FF92400E"
+                android:strokeWidth="1"
+                android:strokeLineJoin="round" />
+        <path android:pathData="M25.5,-9 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0 Z"
+                android:fillColor="#FF92400E" />
+        <path android:pathData="M39,-20 L42,-21.5 M39.5,-14 L44,-14"
+                android:strokeColor="#FFF8FAFC"
+                android:strokeWidth="2"
+                android:strokeLineCap="round" />
     </group>
 </vector>
